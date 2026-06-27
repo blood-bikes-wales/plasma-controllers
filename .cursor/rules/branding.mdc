@@ -1,0 +1,118 @@
+---
+description: Blood Bikes Wales brand and UI guidelines for Plasma Controller
+globs: app/**/*.{tsx,css}
+alwaysApply: false
+---
+
+# Blood Bikes Wales — UI Guidelines
+
+Plasma Controller is a tool for Blood Bikes Wales controllers. Follow these guidelines for all UI work. Full document: `docs/brand-guidelines.md`.
+
+## Brand principles
+
+- **Dependable**: stable colours, clear layouts, plain language
+- **Urgent, not alarming**: crimson for identity/actions; avoid visual panic or excessive red
+- **Operationally clear**: every screen makes the next action obvious
+- **Volunteer-friendly**: broad age range, outdoor use, varying digital confidence
+- **Accessible by default**: high contrast, large tap targets, visible labels
+
+Voice: professional, trustworthy, urgent, approachable. Short imperative labels (`Confirm Collection`, `Report Issue`). No jargon in critical flows.
+
+## Design tokens
+
+Use Tailwind classes from `@theme` in `app/app.css` (prefix `bb-*`). Never hardcode hex in components.
+
+| Token | Class examples | Hex | Use |
+|-------|----------------|-----|-----|
+| Primary | `bg-bb-primary` | #ED2F45 | Brand colour, headers, active nav |
+| Primary dark | `bg-bb-primary-dark` | #991B1B | Hover/pressed primary |
+| Primary light | `bg-bb-primary-light` | #FEE2E2 | Selected states, tags |
+| CTA / splash | `bg-bb-cta` | #B91C1C | Primary buttons, splash, tab active |
+| Navy | `bg-bb-navy`, `text-bb-navy` | #1E3A5F | Structure, area badges, headings |
+| Navy light | `bg-bb-navy-light` | #2D5F8A | Profile cards, secondary accents |
+| Success | `text-bb-success` | #059669 | Delivered, sync confirmed |
+| Success light | `bg-bb-success-light` | #D1FAE5 | Success badge/card bg |
+| Warning | `text-bb-warning` | #D97706 | Offline banner, escalation |
+| Warning light | `bg-bb-warning-light` | #FEF3C7 | Warning backgrounds |
+| Error | `text-bb-error` | #DC2626 | Validation, failed actions |
+| Error light | `bg-bb-error-light` | #FEE2E2 | Error backgrounds |
+| Gray 50 | `bg-bb-gray-50` | #F9FAFB | Screen backgrounds |
+| Gray 100 | `border-bb-gray-100` | #F3F4F6 | Dividers, header borders |
+| Gray 200 | `border-bb-gray-200` | #E5E7EB | Borders |
+| Gray 300 | `border-bb-gray-300` | #D1D5DB | Input/disabled borders |
+| Gray 500 | `text-bb-gray-500` | #6B7280 | Secondary text, placeholders |
+| Gray 700 | `text-bb-gray-700` | #374151 | Labels, outline button text |
+| Gray 900 | `text-bb-gray-900` | #111827 | Primary text, headings |
+| White | `bg-bb-white` | #FFFFFF | Cards, headers, footers |
+
+**Colour rules**: one crimson CTA per critical screen; navy for trust/structure; semantic colours only for their meaning; never colour-only status (always icon + label); no decorative gradients in operational UI.
+
+## Typography
+
+Font stack (set in `app/app.css`): Rubik, Poppins, Inter, ui-sans-serif, system-ui.
+
+| Role | Size | Weight | Colour |
+|------|------|--------|--------|
+| Screen title | 28px | 800 | gray-900 |
+| Section heading | 17–24px | 700–800 | gray-900 |
+| Body | 15–16px | 500–600 | gray-900 |
+| Labels/captions | 13–14px | 500 | gray-500 |
+| Primary button | 17–18px | 700 | white on bb-cta |
+| Outline button | 17px | 600 | gray-700 |
+| Job IDs | mono | 500 | gray-900 |
+
+## Layout and components
+
+**Screen structure**: Gray 50 bg → white NavHeader (gray-100 bottom border, px-5) → scrollable card content (px-5) → white ScreenFooter (gray-100 top border, px-5).
+
+**Cards**: white bg, 16px radius, 20px padding, no border (float on gray-50). Row dividers: 1px gray-100.
+
+**Buttons**: height 56px, radius 12px. Primary: `bg-bb-cta text-white font-bold`. Outline: white bg, 1.5px gray-300 border, gray-700 text. Pressed: opacity 0.75. Disabled: opacity 0.45–0.85.
+
+**Spacing**: screen/footer horizontal 20px; card padding 16–24px; gaps 8/12/16/20px.
+
+**Status badges**:
+
+| Status | Background | Text | Border |
+|--------|------------|------|--------|
+| Active | #DBEAFE | #1D4ED8 | #93C5FD |
+| Pending | white | #374151 | #6EE7B7 |
+| Success | success-light | success | none |
+| Error | error-light | error | none |
+
+**Offline banner**: warning-light bg, `#FCD34D` border, warning text. Copy: "Offline. Your updates will sync automatically when a connection is available."
+
+## Icons
+
+**Logo**: use `/brand/logo.png` (`public/brand/logo.png`). Alt text: `Blood Bikes Wales`. Do not recreate or distort the circular mark.
+
+Use **lucide-react** (outline, strokeWidth 1.5–2). Active tab/action: bb-cta; informational: gray-500; success: success green. Success state icon: CheckCircle 72px in success green.
+
+## Dark mode
+
+Operational flows (dispatch, collection, delivery) are **light mode only**. Do not add `dark:` variants to job/delivery screens. Dark mode is optional only for settings/profile/informational pages.
+
+## Accessibility (non-negotiable)
+
+- Gray 900 on white/gray-50 for main reading content
+- Visible focus states for keyboard users
+- Visible input labels (not placeholder-only)
+- Minimum touch target 44×44px on mobile
+- Status/urgency/completion/errors: colour + text label + icon
+
+## Do / don't
+
+**Do**: use `bb-*` theme tokens; one primary footer action on critical workflows; cards for grouped job/collection/delivery content; show offline banner at top before submission.
+
+**Don't**: introduce colours outside the palette; use Inter-only without Rubik/Poppins in the stack; rely on colour alone for status; use gradients in operational UI; use casual language in critical flows.
+
+## shadcn/ui
+
+Use shadcn components from `~/components/ui`. Add new ones with `npx shadcn@latest add [component]`.
+
+- Prefer shadcn primitives over custom components (`Button`, `Card`, `Input`, `Badge`, etc.)
+- shadcn semantic tokens in `:root` (`primary`, `destructive`, `background`, etc.) are mapped to Blood Bikes Wales colours in `app/app.css`
+- Primary CTAs: `<Button>` uses `bg-primary` → brand crimson `#B91C1C`; extend with `className="h-14 rounded-bb-button text-lg font-bold"` for 56px operational buttons
+- Destructive actions: `<Button variant="destructive">` maps to `#DC2626`
+- Use `cn()` from `~/lib/utils` to merge Tailwind classes
+- Icons: `lucide-react` (already configured in `components.json`)
