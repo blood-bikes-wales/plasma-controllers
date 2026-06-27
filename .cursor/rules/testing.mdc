@@ -1,0 +1,52 @@
+---
+description: Require tests when adding or changing app behaviour; Vitest and Testing Library conventions
+alwaysApply: true
+---
+
+# Testing Requirements
+
+When making **significant changes** or **creating new files**, assess whether tests are needed or existing tests must be updated. Do not treat tests as optional for behaviour-bearing work.
+
+## When tests are required
+
+Add or update tests when you change any of:
+
+- **Components** in `app/components/` (except `app/components/ui/` — shadcn primitives)
+- **Routes / pages** in `app/routes/`
+- **Shared logic** in `app/lib/`
+- **User-visible behaviour**: navigation, forms, menus, conditional UI, event handlers
+- **Route integration**: redirects, layout nesting, cross-page flows
+
+Skip new tests only for trivial, non-behavioural edits (copy tweaks, pure styling with no logic change, config-only changes).
+
+## What to test
+
+| Area | Location | Approach |
+|------|----------|----------|
+| Components | `app/components/<name>.test.tsx` | Render, interactions, key props/variants |
+| Pages | `app/routes/<page>.test.tsx` | Meta, page content, embedded form/navigation |
+| Routes (integration) | `tests/routes.test.tsx` | Full route tree via `appRoutes` in `tests/routes-config.ts` |
+| Helpers | `tests/test-utils.tsx` | Reuse `renderWithRouter` for router-dependent UI |
+
+**Do not** add tests under `app/components/ui/` unless a primitive is heavily customised.
+
+## Conventions
+
+- Stack: **Vitest**, **React Testing Library**, **user-event**
+- Colocate unit tests next to the file under test
+- Import route/page modules directly; mirror the app route tree in `tests/routes-config.ts` when integration behaviour changes
+- Mock `console.log` / side effects when asserting handlers
+- Dropdown/menu tests may need jsdom polyfills in `tests/setup.ts` — reuse existing setup
+
+## Before finishing
+
+1. Add or update the relevant test file(s)
+2. Run `npm test` and fix failures
+3. If routes changed, update `tests/routes-config.ts` and `tests/routes.test.tsx`
+
+```bash
+npm test          # run once
+npm run test:watch  # during development
+```
+
+CI runs tests on pull requests to `main` — keep the suite green.
