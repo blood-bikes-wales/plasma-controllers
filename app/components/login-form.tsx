@@ -1,6 +1,10 @@
-import { useNavigate } from "react-router";
+import { useEffect, useRef, useState } from "react";
+import { Navigate, useNavigate } from "react-router";
 
 import { Button } from "~/components/ui/button";
+import { ApiError } from "~/lib/api-client";
+import { useAuth } from "~/lib/auth";
+import { mountGoogleSignInButton } from "~/lib/google-sign-in";
 import { cn } from "~/lib/utils";
 
 function GoogleIcon({ className }: { className?: string }) {
@@ -31,16 +35,118 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
+function authErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 403) {
+      return "Your Google account is not allowed for this app. Use your organisation account.";
+    }
+    if (error.status === 401) {
+      return "Google sign-in could not be verified. Try again.";
+    }
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Something went wrong during sign-in. Try again.";
+}
+
+type LoginFormProps = React.ComponentProps<"div"> & {
+  /**
+   * Test-only injectable sign-in. When set, shows the custom button instead of
+   * the official Google Sign-In button.
+   */
+  requestIdToken?: () => Promise<string>;
+};
+
 export function LoginForm({
   className,
+  requestIdToken,
   ...props
-}: React.ComponentProps<"div">) {
+}: LoginFormProps) {
   const navigate = useNavigate();
+  const { status, loginWithCredential } = useAuth();
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [googleButtonError, setGoogleButtonError] = useState<string | null>(
+    null,
+  );
+  const googleButtonRef = useRef<HTMLDivElement>(null);
 
-  function handleLoginWithGoogle() {
-    console.log("Login with Google clicked");
-    navigate("/jobs");
+  const useTestSignIn = requestIdToken != null;
+
+  useEffect(() => {
+    if (useTestSignIn || status !== "unauthenticated") {
+      return;
+    }
+
+    const container = googleButtonRef.current;
+    if (!container) {
+      return;
+    }
+
+    let cancelled = false;
+    let cleanup: (() => void) | undefined;
+
+    void mountGoogleSignInButton(container, {
+      width: Math.min(container.clientWidth || 320, 400),
+      onCredential: async (idToken) => {
+        setError(null);
+        setIsSigningIn(true);
+        try {
+          await loginWithCredential(idToken);
+          navigate("/jobs", { replace: true });
+        } catch (err) {
+          setError(authErrorMessage(err));
+        } finally {
+          setIsSigningIn(false);
+        }
+      },
+      onError: (message) => {
+        setError(message);
+      },
+    })
+      .then((unmount) => {
+        if (cancelled) {
+          unmount();
+          return;
+        }
+        cleanup = unmount;
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setGoogleButtonError(authErrorMessage(err));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, [useTestSignIn, status, loginWithCredential, navigate]);
+
+  if (status === "authenticated") {
+    return <Navigate to="/jobs" replace />;
   }
+
+  async function handleTestLogin() {
+    if (!requestIdToken) {
+      return;
+    }
+    setError(null);
+    setIsSigningIn(true);
+    try {
+      const idToken = await requestIdToken();
+      await loginWithCredential(idToken);
+      navigate("/jobs", { replace: true });
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setIsSigningIn(false);
+    }
+  }
+
+  const displayError = error ?? googleButtonError;
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -52,15 +158,43 @@ export function LoginForm({
           Controllers sign in with their Google account
         </p>
       </div>
-      <Button
-        variant="outline"
-        type="button"
-        className="h-14 w-full gap-3 rounded-bb-button text-base font-semibold"
-        onClick={handleLoginWithGoogle}
-      >
-        <GoogleIcon className="size-5" />
-        Login with Google
-      </Button>
+      {displayError ? (
+        <p
+          role="alert"
+          className="rounded-bb-button bg-bb-error-light px-3 py-2 text-center text-sm font-medium text-bb-error"
+        >
+          {displayError}
+        </p>
+      ) : null}
+      {useTestSignIn ? (
+        <Button
+          variant="outline"
+          type="button"
+          className="h-14 w-full gap-3 rounded-bb-button text-base font-semibold"
+          onClick={handleTestLogin}
+          disabled={isSigningIn || status === "loading"}
+        >
+          <GoogleIcon className="size-5" />
+          {isSigningIn ? "Signing in…" : "Login with Google"}
+        </Button>
+      ) : (
+        <div className="flex w-full flex-col items-center gap-2">
+          {isSigningIn || status === "loading" ? (
+            <p className="text-sm font-medium text-bb-gray-500">
+              {isSigningIn ? "Signing in…" : "Loading sign-in…"}
+            </p>
+          ) : null}
+          <div
+            ref={googleButtonRef}
+            className={cn(
+              "flex min-h-14 w-full justify-center [&>div]:w-full!",
+              (isSigningIn || status === "loading") &&
+                "pointer-events-none opacity-60",
+            )}
+            aria-busy={isSigningIn || status === "loading"}
+          />
+        </div>
+      )}
     </div>
   );
 }

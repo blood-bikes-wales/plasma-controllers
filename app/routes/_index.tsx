@@ -1,5 +1,8 @@
 import { Navigate } from "react-router";
 
+import { getAuthToken } from "~/lib/auth-token";
+
 export default function Index() {
-  return <Navigate to="/login" replace />;
+  const hasToken = Boolean(getAuthToken());
+  return <Navigate to={hasToken ? "/jobs" : "/login"} replace />;
 }

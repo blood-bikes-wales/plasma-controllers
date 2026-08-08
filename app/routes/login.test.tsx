@@ -1,15 +1,62 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it } from "vitest";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { AuthProvider } from "~/lib/auth";
+import { clearAuthToken } from "~/lib/auth-token";
+
+import {
+  mockAuthUser,
+  stubAuthenticatedFetch,
+} from "../../tests/auth-fixtures";
 import LoginPage, { meta } from "./login";
 
+vi.mock("~/lib/google-sign-in", () => ({
+  mountGoogleSignInButton: vi.fn(
+    async (
+      container: HTMLElement,
+      options: {
+        onCredential: (idToken: string) => void | Promise<void>;
+        onError?: (message: string) => void;
+      },
+    ) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Sign in with Google";
+      button.addEventListener("click", () => {
+        void options.onCredential("fresh-google-id-token");
+      });
+      container.replaceChildren(button);
+      return () => {
+        container.replaceChildren();
+      };
+    },
+  ),
+}));
+
+afterEach(() => {
+  clearAuthToken();
+  vi.unstubAllGlobals();
+});
+
 function renderLoginPage() {
+  vi.stubGlobal("fetch", stubAuthenticatedFetch(mockAuthUser));
+
   const router = createMemoryRouter(
     [
-      { path: "/", Component: LoginPage },
-      { path: "/jobs", Component: () => <div>Jobs</div> },
+      {
+        element: (
+          <AuthProvider>
+            <Outlet />
+          </AuthProvider>
+        ),
+        children: [
+          { path: "/", Component: LoginPage },
+          { path: "/jobs", Component: () => <div>Jobs</div> },
+          { path: "/login", Component: () => <div>Login</div> },
+        ],
+      },
     ],
     { initialEntries: ["/"] },
   );
@@ -28,25 +75,30 @@ describe("LoginPage", () => {
     ]);
   });
 
-  it("renders a centered login form", () => {
+  it("renders a centered login form", async () => {
     renderLoginPage();
 
-    const heading = screen.getByRole("heading", {
+    const heading = await screen.findByRole("heading", {
       name: "Sign in to Plasma Controller",
     });
     expect(heading).toBeInTheDocument();
     expect(heading.closest(".max-w-xs")).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: "Login with Google" }),
+      await screen.findByRole("button", { name: "Sign in with Google" }),
     ).toBeInTheDocument();
   });
 
   it("allows signing in through the embedded login form", async () => {
     const { router, user } = renderLoginPage();
 
-    await user.click(screen.getByRole("button", { name: "Login with Google" }));
+    const button = await screen.findByRole("button", {
+      name: "Sign in with Google",
+    });
+    await user.click(button);
 
-    expect(router.state.location.pathname).toBe("/jobs");
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/jobs");
+    });
     expect(screen.getByText("Jobs")).toBeInTheDocument();
   });
 });
