@@ -1,17 +1,46 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LoginForm } from "~/components/login-form";
+import { AuthProvider } from "~/lib/auth";
+import { clearAuthToken } from "~/lib/auth-token";
 
-function renderLoginForm(initialEntry = "/") {
+import {
+  mockAuthUser,
+  stubAuthenticatedFetch,
+} from "../../tests/auth-fixtures";
+
+afterEach(() => {
+  clearAuthToken();
+  vi.unstubAllGlobals();
+});
+
+function renderLoginForm(
+  requestIdToken: () => Promise<string> = async () => "token",
+) {
+  vi.stubGlobal("fetch", stubAuthenticatedFetch(mockAuthUser));
+
   const router = createMemoryRouter(
     [
-      { path: "/", element: <LoginForm /> },
-      { path: "/jobs", element: <div>Jobs page</div> },
+      {
+        element: (
+          <AuthProvider>
+            <Outlet />
+          </AuthProvider>
+        ),
+        children: [
+          {
+            path: "/",
+            element: <LoginForm requestIdToken={requestIdToken} />,
+          },
+          { path: "/jobs", element: <div>Jobs page</div> },
+          { path: "/login", element: <div>Login page</div> },
+        ],
+      },
     ],
-    { initialEntries: [initialEntry] },
+    { initialEntries: ["/"] },
   );
 
   return {
@@ -22,12 +51,14 @@ function renderLoginForm(initialEntry = "/") {
 }
 
 describe("LoginForm", () => {
-  it("renders sign-in heading and Google button", () => {
+  it("renders sign-in heading and Google button", async () => {
     renderLoginForm();
 
-    expect(
-      screen.getByRole("heading", { name: "Sign in to Plasma Controller" }),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Sign in to Plasma Controller" }),
+      ).toBeInTheDocument();
+    });
     expect(
       screen.getByRole("button", { name: "Login with Google" }),
     ).toBeInTheDocument();
@@ -36,16 +67,41 @@ describe("LoginForm", () => {
     ).toBeInTheDocument();
   });
 
-  it("logs and navigates to jobs when Google login is clicked", async () => {
-    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const { router, user } = renderLoginForm();
+  it("navigates to jobs when Google login succeeds", async () => {
+    const requestIdToken = vi.fn(async () => "fresh-google-id-token");
+    const { router, user } = renderLoginForm(requestIdToken);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Login with Google" }),
+      ).toBeEnabled();
+    });
 
     await user.click(screen.getByRole("button", { name: "Login with Google" }));
 
-    expect(consoleSpy).toHaveBeenCalledWith("Login with Google clicked");
-    expect(router.state.location.pathname).toBe("/jobs");
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/jobs");
+    });
+    expect(requestIdToken).toHaveBeenCalled();
     expect(screen.getByText("Jobs page")).toBeInTheDocument();
+  });
 
-    consoleSpy.mockRestore();
+  it("shows an error when sign-in fails", async () => {
+    const requestIdToken = vi.fn(async () => {
+      throw new Error("Google Sign-In was skipped (tap_outside)");
+    });
+    const { user } = renderLoginForm(requestIdToken);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Login with Google" }),
+      ).toBeEnabled();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Login with Google" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Google Sign-In was skipped",
+    );
   });
 });

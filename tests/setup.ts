@@ -27,4 +27,7 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
+  // Sheet/drawer tests can leave scroll-lock styles that hide later queries.
+  document.body.style.overflow = "";
+  document.body.removeAttribute("data-scroll-locked");
 });

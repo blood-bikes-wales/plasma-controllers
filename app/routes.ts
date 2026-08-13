@@ -8,11 +8,13 @@ import {
 export default [
   index("routes/_index.tsx"),
   route("login", "routes/login.tsx"),
-  layout("routes/dashboard-layout.tsx", [
-    route("dashboard", "routes/dashboard.tsx"),
-    route("jobs", "routes/jobs.tsx", [
-      route("new", "routes/jobs-new.tsx", [
-        route("assign", "routes/jobs-new-assign.tsx"),
+  layout("routes/protected-layout.tsx", [
+    layout("routes/dashboard-layout.tsx", [
+      route("dashboard", "routes/dashboard.tsx"),
+      route("jobs", "routes/jobs.tsx", [
+        route("new", "routes/jobs-new.tsx", [
+          route("assign", "routes/jobs-new-assign.tsx"),
+        ]),
       ]),
     ]),
   ]),

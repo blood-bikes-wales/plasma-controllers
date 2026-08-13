@@ -1,8 +1,8 @@
-import { Navigate } from "react-router";
+import { Navigate, Outlet } from "react-router";
 
 import { useAuth } from "~/lib/auth";
 
-export default function Index() {
+export default function ProtectedLayout() {
   const { status } = useAuth();
 
   if (status === "loading") {
@@ -15,7 +15,9 @@ export default function Index() {
     );
   }
 
-  return (
-    <Navigate to={status === "authenticated" ? "/jobs" : "/login"} replace />
-  );
+  if (status === "unauthenticated") {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Outlet />;
 }

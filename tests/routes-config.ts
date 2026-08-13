@@ -7,22 +7,28 @@ import JobsPage from "~/routes/jobs";
 import JobsNewRoute from "~/routes/jobs-new";
 import JobsNewAssignRoute from "~/routes/jobs-new-assign";
 import LoginPage from "~/routes/login";
+import ProtectedLayout from "~/routes/protected-layout";
 
 export const appRoutes: RouteObject[] = [
   { index: true, Component: Index },
   { path: "login", Component: LoginPage },
   {
-    Component: DashboardLayout,
+    Component: ProtectedLayout,
     children: [
-      { path: "dashboard", Component: DashboardPage },
       {
-        path: "jobs",
-        Component: JobsPage,
+        Component: DashboardLayout,
         children: [
+          { path: "dashboard", Component: DashboardPage },
           {
-            path: "new",
-            Component: JobsNewRoute,
-            children: [{ path: "assign", Component: JobsNewAssignRoute }],
+            path: "jobs",
+            Component: JobsPage,
+            children: [
+              {
+                path: "new",
+                Component: JobsNewRoute,
+                children: [{ path: "assign", Component: JobsNewAssignRoute }],
+              },
+            ],
           },
         ],
       },
