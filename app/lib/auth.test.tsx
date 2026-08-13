@@ -119,4 +119,24 @@ describe("AuthProvider", () => {
     });
     expect(getAuthToken()).toBeNull();
   });
+
+  it("keeps the session when GET /me fails with a transient error", async () => {
+    setAuthToken("stored-google-id-token");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ message: "Server error" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    renderAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
+    });
+    expect(getAuthToken()).toBe("stored-google-id-token");
+  });
 });

@@ -23,7 +23,7 @@ describe("DashboardPage", () => {
 
     expect(
       screen.getByText(
-        "Welcome to Plasma Controller. Authentication will gate this page in a future update.",
+        "Welcome to Plasma Controller. Use Jobs to view and assign courier work.",
       ),
     ).toBeInTheDocument();
   });

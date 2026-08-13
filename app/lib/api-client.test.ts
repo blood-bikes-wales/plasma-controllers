@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { type ApiError, apiFetch } from "~/lib/api-client";
-import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
+import { type ApiError, apiFetch, UNAUTHORIZED_EVENT } from "~/lib/api-client";
+import { clearAuthToken, getAuthToken, setAuthToken } from "~/lib/auth-token";
 
 afterEach(() => {
   clearAuthToken();
@@ -60,5 +60,31 @@ describe("apiFetch", () => {
       status: 403,
       message: "Forbidden",
     } satisfies Partial<ApiError>);
+  });
+
+  it("clears the token and notifies listeners on 401", async () => {
+    setAuthToken("expired-token");
+    const onUnauthorized = vi.fn();
+    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ message: "Unauthenticated." }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    await expect(apiFetch("/me")).rejects.toMatchObject({
+      name: "ApiError",
+      status: 401,
+    });
+
+    expect(getAuthToken()).toBeNull();
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+
+    window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized);
   });
 });

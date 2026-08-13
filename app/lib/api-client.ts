@@ -1,6 +1,8 @@
 import { clearAuthToken, getAuthToken } from "~/lib/auth-token";
 import { getApiBaseUrl } from "~/lib/env";
 
+export const UNAUTHORIZED_EVENT = "plasma:unauthorized";
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
@@ -20,10 +22,18 @@ type RequestOptions = RequestInit & {
   skipAuth?: boolean;
 };
 
-function redirectToLogin(): void {
+function notifyUnauthorized(): void {
   clearAuthToken();
-  if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-    window.location.assign("/login");
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
+}
+
+function parseJsonBody(text: string, status: number): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new ApiError(status, `Request failed with status ${status}`);
   }
 }
 
@@ -49,12 +59,12 @@ export async function apiFetch<T = unknown>(
   const response = await fetch(url, { ...init, headers });
 
   if (response.status === 401) {
-    redirectToLogin();
+    notifyUnauthorized();
     throw new ApiError(401, "Unauthenticated");
   }
 
   const text = await response.text();
-  const body = text ? (JSON.parse(text) as unknown) : null;
+  const body = text ? parseJsonBody(text, response.status) : null;
 
   if (!response.ok) {
     const message =

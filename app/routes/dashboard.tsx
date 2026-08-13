@@ -9,8 +9,7 @@ export default function DashboardPage() {
     <div className="mx-auto max-w-2xl">
       <h1 className="text-[28px] font-extrabold text-bb-navy">Dashboard</h1>
       <p className="mt-4 text-base font-medium text-bb-gray-700">
-        Welcome to Plasma Controller. Authentication will gate this page in a
-        future update.
+        Welcome to Plasma Controller. Use Jobs to view and assign courier work.
       </p>
     </div>
   );
