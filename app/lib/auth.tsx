@@ -10,6 +10,7 @@ import { useNavigate } from "react-router";
 
 import { ApiError, apiFetch, UNAUTHORIZED_EVENT } from "~/lib/api-client";
 import { clearAuthToken, getAuthToken, setAuthToken } from "~/lib/auth-token";
+import { parseRoles, type Role } from "~/lib/roles";
 
 export type AuthUser = {
   id: number;
@@ -17,6 +18,7 @@ export type AuthUser = {
   email: string;
   google_id: string | null;
   email_verified_at: string | null;
+  roles: Role[];
 };
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -32,10 +34,18 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function fetchMe(token?: string): Promise<AuthUser> {
-  return apiFetch<AuthUser>("/me", {
-    token,
-    // During login we pass the Google ID token explicitly before it is stored.
-  });
+  const user = await apiFetch<Omit<AuthUser, "roles"> & { roles?: string[] }>(
+    "/me",
+    {
+      token,
+      // During login we pass the Google ID token explicitly before it is stored.
+    },
+  );
+
+  return {
+    ...user,
+    roles: parseRoles(user.roles),
+  };
 }
 
 function isUnauthorized(error: unknown): boolean {

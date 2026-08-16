@@ -9,6 +9,61 @@ afterEach(() => {
 });
 
 describe("apiFetch", () => {
+  it("sends a generated X-Request-Id on every request", async () => {
+    vi.stubGlobal("crypto", {
+      randomUUID: () => "aaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    });
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/me", { skipAuth: true });
+
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("X-Request-Id")).toBe(
+      "aaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    );
+  });
+
+  it("allows an explicit requestId override", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/me", { skipAuth: true, requestId: "spa-journey-1" });
+
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("X-Request-Id")).toBe("spa-journey-1");
+  });
+
+  it("attaches requestId to ApiError on failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(JSON.stringify({ message: "Forbidden" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    await expect(
+      apiFetch("/me", { token: "x", requestId: "err-id-9" }),
+    ).rejects.toMatchObject({
+      name: "ApiError",
+      status: 403,
+      requestId: "err-id-9",
+    } satisfies Partial<ApiError>);
+  });
+
   it("attaches the Bearer token from sessionStorage", async () => {
     setAuthToken("stored-token");
     const fetchMock = vi.fn(async () => {

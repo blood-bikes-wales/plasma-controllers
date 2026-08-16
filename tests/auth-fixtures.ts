@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 
 import type { AuthUser } from "~/lib/auth";
+import { Role } from "~/lib/roles";
 
 export const mockAuthUser: AuthUser = {
   id: 1,
@@ -8,6 +9,7 @@ export const mockAuthUser: AuthUser = {
   email: "s.humphreys@bloodbikes.wales",
   google_id: "google-123",
   email_verified_at: "2026-01-01T00:00:00.000000Z",
+  roles: [Role.Controller],
 };
 
 export function stubAuthenticatedFetch(user: AuthUser = mockAuthUser) {
