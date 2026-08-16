@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { UserMenu } from "~/components/user-menu";
 import { AuthProvider } from "~/lib/auth";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
+import { Role } from "~/lib/roles";
 
 import {
   mockAuthUser,
@@ -85,6 +86,47 @@ describe("UserMenu", () => {
     expect(
       screen.getByRole("menuitem", { name: "Sign out" }),
     ).toBeInTheDocument();
+  });
+
+  it("shows the primary role from /me in the badge", async () => {
+    setAuthToken("test-token");
+    vi.stubGlobal(
+      "fetch",
+      stubAuthenticatedFetch({
+        ...mockAuthUser,
+        roles: [Role.Rider, Role.Driver],
+      }),
+    );
+
+    const router = createMemoryRouter(
+      [
+        {
+          element: (
+            <AuthProvider>
+              <Outlet />
+            </AuthProvider>
+          ),
+          children: [
+            { path: "/", element: <UserMenu /> },
+            { path: "/login", element: <div>Login page</div> },
+          ],
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+
+    const user = userEvent.setup();
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Open user menu" }),
+      ).toBeInTheDocument();
+    });
+
+    await openUserMenu(user);
+
+    expect(screen.getByText("Rider")).toBeInTheDocument();
   });
 
   it("navigates to login when sign out is clicked", async () => {

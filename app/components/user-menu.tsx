@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "~/components/ui/dropdown-menu";
 import { useAuth } from "~/lib/auth";
+import { primaryRoleLabel } from "~/lib/roles";
 
 function emailLocalPart(email: string): string {
   const at = email.indexOf("@");
@@ -23,6 +24,7 @@ export function UserMenu() {
 
   const displayName = user?.name ?? "Controller";
   const handle = user?.email ? emailLocalPart(user.email) : "—";
+  const roleLabel = primaryRoleLabel(user?.roles);
 
   return (
     <DropdownMenu>
@@ -51,7 +53,7 @@ export function UserMenu() {
             <span className="text-xs font-normal text-bb-gray-500">
               {handle}
             </span>
-            <StatusBadge variant="active">Controller</StatusBadge>
+            <StatusBadge variant="active">{roleLabel}</StatusBadge>
           </div>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
