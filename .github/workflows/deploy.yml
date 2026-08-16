@@ -1,0 +1,88 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options:
+          - staging
+          - production
+        default: staging
+
+concurrency:
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'staging' }}
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      WORKSPACE: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'staging' }}
+      REGION: europe-west2
+    defaults:
+      run:
+        working-directory: infrastructure
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure Artifact Registry Docker auth
+        working-directory: .
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push image
+        working-directory: .
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VITE_GOOGLE_CLIENT_ID}" ]; then
+            echo "Missing secret VITE_GOOGLE_CLIENT_ID for environment ${WORKSPACE}" >&2
+            exit 1
+          fi
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/plasma-controller/plasma-controller:${GITHUB_SHA}"
+          echo "IMAGE=${IMAGE}" >> "${GITHUB_ENV}"
+          docker build \
+            --build-arg "VITE_API_BASE_URL=${VITE_API_BASE_URL}" \
+            --build-arg "VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}" \
+            -t "${IMAGE}" \
+            .
+          docker push "${IMAGE}"
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Select workspace
+        run: terraform workspace select "${WORKSPACE}" || terraform workspace new "${WORKSPACE}"
+
+      - name: Terraform apply
+        run: |
+          terraform apply -auto-approve \
+            -var-file="environments/${WORKSPACE}.tfvars" \
+            -var="container_image=${IMAGE}"
