@@ -28,7 +28,7 @@ We also looked at Firebase Hosting and Cloud Storage behind a load balancer. Thi
 | Staging | Try a release before controllers rely on it | `plasma-staging-502110` |
 | Production (live) | What controllers use day to day | `plasma-production` |
 
-Exact public web addresses are the Cloud Run `*.run.app` URLs until a custom domain is chosen (TODO: verify). Staging deploys when code lands on `main`. Live deploys are started by hand and can require a reviewer.
+Exact public web addresses are the Cloud Run `*.run.app` URLs until a custom domain is chosen (TODO: verify). Staging deploys when a pull request into `main` has passed its checks. Live deploys are started by hand and can require a reviewer.
 
 ## Who owns this
 

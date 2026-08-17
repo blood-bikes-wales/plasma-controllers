@@ -38,7 +38,7 @@ If the name is taken, change `bucket` in `infrastructure/backend.tf` to a unique
 
 ### 2. First apply from a laptop (each workspace)
 
-Creates APIs, Artifact Registry, Cloud Run (placeholder hello image), public invoker IAM, and GitHub Workload Identity Federation.
+Creates APIs, Artifact Registry, Cloud Run (placeholder hello image), public invoker IAM, GitHub Workload Identity Federation, and `roles/storage.admin` on `gs://plasma-controller-tfstate` for the deploy service account. That grant is required for CI `terraform init` (state objects) and for refreshing this IAM binding (`storage.buckets.getIamPolicy`). Apply it from a laptop; the deploy SA cannot grant itself bucket IAM.
 
 ```bash
 cd infrastructure
@@ -66,7 +66,7 @@ On the production GitHub Environment, require a reviewer so `workflow_dispatch` 
 
 ### 3. Ongoing deploys
 
-- **Staging:** push to `main` runs [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml) (build/push SHA image, `terraform apply` with `container_image`).
+- **Staging:** a PR targeting `main` deploys after CI lint, format, test, and Terraform validate succeed ([`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) calls [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)).
 - **Production:** Actions → Deploy → Run workflow → `production` (uses the `production` environment gate).
 
 Bootstrap must have created the Artifact Registry repository before the first Actions push.

@@ -88,16 +88,16 @@ Cache-Control / CDN header tuning is **out of scope**. Traffic is too low.
 | `.env.example` | Local env template |
 | `Dockerfile` | Node 24 Alpine; Vite build-args; `CMD npm run start` |
 | `infrastructure/` | Terraform root (workspaces + tfvars) |
-| `.github/workflows/ci.yml` | Lint, format, test on PRs |
-| `.github/workflows/terraform.yml` | `terraform fmt` / `validate` when infra changes |
-| `.github/workflows/deploy.yml` | Staging on `main`; production via `workflow_dispatch` |
+| `.github/workflows/ci.yml` | Lint, format, test, Terraform validate on PRs; staging deploy after those pass |
+| `.github/workflows/terraform.yml` | `terraform fmt` / `validate` (called from CI) |
+| `.github/workflows/deploy.yml` | Staging from CI after checks; production via `workflow_dispatch` |
 | `docs/technical/cloud-run.md` | Bootstrap and operate Cloud Run |
 
 ## Pitfalls
 
 - Pair workspace and tfvars. Never apply `production.tfvars` while the `staging` workspace is selected.
 - `VITE_*` cannot be changed on a running revision without a new image build.
-- First GitHub Actions deploy needs Artifact Registry and WIF from a laptop apply ([runbook](cloud-run.md)).
+- First GitHub Actions deploy needs Artifact Registry, WIF, and `roles/storage.admin` on `gs://plasma-controller-tfstate` from a laptop apply ([runbook](cloud-run.md)). Project IAM Admin does not include `storage.buckets.getIamPolicy`.
 - Root `README.md` still describes SSR Docker deploy; this app is a SPA.
 - Plasma API Cloud Run + secret injection is not in Terraform yet; set `FRONTEND_URL` when this SPA has a URL.
 

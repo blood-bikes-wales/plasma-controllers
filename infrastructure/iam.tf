@@ -21,3 +21,12 @@ resource "google_project_iam_member" "github_deploy" {
   role    = each.value
   member  = "serviceAccount:${google_service_account.github_deploy.email}"
 }
+
+# State lives in one staging-project bucket. objectAdmin is enough to read/write
+# .tfstate, but this resource itself is bucket IAM, so CI also needs getIamPolicy /
+# setIamPolicy (storage.admin). Project IAM Admin does not cover GCS bucket policies.
+resource "google_storage_bucket_iam_member" "github_deploy_tfstate" {
+  bucket = var.tfstate_bucket
+  role   = "roles/storage.admin"
+  member = "serviceAccount:${google_service_account.github_deploy.email}"
+}

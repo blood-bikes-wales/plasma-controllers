@@ -1,12 +1,7 @@
 name: Terraform
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - infrastructure/**
-      - .github/workflows/terraform.yml
+  workflow_call:
 
 jobs:
   validate:
