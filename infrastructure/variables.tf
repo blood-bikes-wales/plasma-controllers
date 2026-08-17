@@ -38,3 +38,9 @@ variable "deletion_protection" {
   type        = bool
   default     = true
 }
+
+variable "tfstate_bucket" {
+  description = "GCS bucket holding Terraform state for all workspaces. Created once in staging; both deploy service accounts need object access."
+  type        = string
+  default     = "plasma-controller-tfstate"
+}

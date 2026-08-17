@@ -62,3 +62,18 @@ jobs:
 
       - name: Test
         run: npm test
+
+  terraform:
+    name: Terraform
+    uses: ./.github/workflows/terraform.yml
+
+  deploy-staging:
+    name: Deploy staging
+    needs: [lint, format, test, terraform]
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write

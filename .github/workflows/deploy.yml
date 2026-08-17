@@ -1,9 +1,12 @@
 name: Deploy
 
 on:
-  push:
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      environment:
+        description: Target environment
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       environment:
@@ -15,7 +18,7 @@ on:
         default: staging
 
 concurrency:
-  group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'staging' }}
+  group: deploy-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -25,11 +28,11 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'staging' }}
+    environment: ${{ inputs.environment }}
     env:
       TF_IN_AUTOMATION: "true"
       TF_INPUT: "false"
-      WORKSPACE: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'staging' }}
+      WORKSPACE: ${{ inputs.environment }}
       REGION: europe-west2
     defaults:
       run:
