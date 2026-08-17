@@ -58,3 +58,13 @@ pages:
     title: "Blood Bikes Wales — Brand Guidelines"
     folder: "."
     url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/12451978/Blood+Bikes+Wales+Brand+Guidelines"
+  technical/gcp-hosting.md:
+    pageId: "14745602"
+    title: "Plasma Controller — GCP hosting"
+    folder: "technical"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/14745602/Plasma+Controller+GCP+hosting"
+  non-technical/hosting.md:
+    pageId: "14680066"
+    title: "Plasma Controller — Hosting"
+    folder: "non-technical"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/14680066/Plasma+Controller+Hosting"
