@@ -2,69 +2,77 @@
 cloudId: "https://bloodbikeswales.atlassian.net"
 
 # Space key — passed as spaceKey to create_page
-spaceId: "~557058fdb7bd6307154e4b8ecf7e4efeeb4be7"
+spaceId: "PD"
 
 # Repo / package name; Confluence root folder title = "Plasma Controller"
 projectName: "plasma-controller"
 
-# Software Documentation folder
-# https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/folder/12386307/Software+Documentation
-docsParentId: "12386307"
+# Project Documentation space homepage
+# https://bloodbikeswales.atlassian.net/wiki/spaces/PD/overview
+docsParentId: "17891506"
 
 # Required: Confluence I/O always uses this MCP server
 mcpServer: "user-Confluence communication server"
 
 # Structural parents (folder surrogates). Titles are space-unique
-# (personal space already had "Technical" / "Non-technical" from other projects).
+# (PD already has "Technical" / "Non-technical" from Plasma API).
 folders:
   ".":
-    pageId: "12321079"
+    pageId: "17924227"
     title: "Plasma Controller"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/17924227/Plasma+Controller"
   technical:
-    pageId: "12451961"
+    pageId: "18022491"
     title: "Plasma Controller — Technical"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/18022491/Plasma+Controller+Technical"
   non-technical:
-    pageId: "12321095"
+    pageId: "17924243"
     title: "Plasma Controller — Non-technical"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/17924243/Plasma+Controller+Non-technical"
 
 pages:
   README.md:
-    pageId: "12288080"
+    pageId: "17891583"
     title: "Plasma Controller — Docs index"
     folder: "."
-    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/12288080/Plasma+Controller+Docs+index"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/17891583/Plasma+Controller+Docs+index"
   technical/overview.md:
-    pageId: "12288096"
+    pageId: "17891658"
     title: "Plasma Controller — Technical overview"
     folder: "technical"
-    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/12288096/Plasma+Controller+Technical+overview"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/17891658/Plasma+Controller+Technical+overview"
   technical/architecture.md:
-    pageId: "12386433"
+    pageId: "17924283"
     title: "Plasma Controller — Architecture"
     folder: "technical"
-    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/12386433/Plasma+Controller+Architecture"
-  non-technical/overview.md:
-    pageId: "12321127"
-    title: "Plasma Controller — Project overview"
-    folder: "non-technical"
-    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/12321127/Plasma+Controller+Project+overview"
-  non-technical/glossary.md:
-    pageId: "12321111"
-    title: "Plasma Controller — Glossary"
-    folder: "non-technical"
-    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/12321111/Plasma+Controller+Glossary"
-  brand-guidelines.md:
-    pageId: "12451978"
-    title: "Blood Bikes Wales — Brand Guidelines"
-    folder: "."
-    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/12451978/Blood+Bikes+Wales+Brand+Guidelines"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/17924283/Plasma+Controller+Architecture"
   technical/gcp-hosting.md:
-    pageId: "14745602"
+    pageId: "17891674"
     title: "Plasma Controller — GCP hosting"
     folder: "technical"
-    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/14745602/Plasma+Controller+GCP+hosting"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/17891674/Plasma+Controller+GCP+hosting"
+  technical/cloud-run.md:
+    pageId: "18022567"
+    title: "Plasma Controller — Cloud Run deploy"
+    folder: "technical"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/18022567/Plasma+Controller+Cloud+Run+deploy"
+  non-technical/overview.md:
+    pageId: "17924259"
+    title: "Plasma Controller — Project overview"
+    folder: "non-technical"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/17924259/Plasma+Controller+Project+overview"
+  non-technical/glossary.md:
+    pageId: "17891642"
+    title: "Plasma Controller — Glossary"
+    folder: "non-technical"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/17891642/Plasma+Controller+Glossary"
   non-technical/hosting.md:
-    pageId: "14680066"
+    pageId: "17924288"
     title: "Plasma Controller — Hosting"
     folder: "non-technical"
-    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/~557058fdb7bd6307154e4b8ecf7e4efeeb4be7/pages/14680066/Plasma+Controller+Hosting"
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/17924288/Plasma+Controller+Hosting"
+  brand-guidelines.md:
+    pageId: "18022599"
+    title: "Blood Bikes Wales — Brand Guidelines"
+    folder: "."
+    url: "https://bloodbikeswales.atlassian.net/wiki/spaces/PD/pages/18022599/Blood+Bikes+Wales+Brand+Guidelines"
