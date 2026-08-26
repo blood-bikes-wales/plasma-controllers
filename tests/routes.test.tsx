@@ -102,6 +102,41 @@ describe("routes", () => {
     );
   });
 
+  it("renders the shifts page within the app layout at /shifts", async () => {
+    renderWithRouter(appRoutes, "/shifts", { authenticated: true });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Shifts" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: "Log on rider" }),
+    ).toBeInTheDocument();
+  });
+
+  it("navigates between Jobs and Shifts using the primary nav", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWithRouter(appRoutes, "/jobs", {
+      authenticated: true,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Jobs" })).toBeInTheDocument();
+    });
+
+    await user.click(
+      screen.getByRole("link", { name: "Shifts", current: false }),
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/shifts");
+      expect(
+        screen.getByRole("heading", { name: "Shifts" }),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("opens the new job drawer at /jobs/new", async () => {
     renderWithRouter(appRoutes, "/jobs/new", { authenticated: true });
 

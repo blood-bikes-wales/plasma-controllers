@@ -1,6 +1,21 @@
-import { Outlet } from "react-router";
+import { NavLink, Outlet } from "react-router";
 
 import { UserMenu } from "~/components/user-menu";
+import { cn } from "~/lib/utils";
+
+const NAV_ITEMS = [
+  { to: "/jobs", label: "Jobs" },
+  { to: "/shifts", label: "Shifts" },
+];
+
+function navLinkClass({ isActive }: { isActive: boolean }) {
+  return cn(
+    "shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+    isActive
+      ? "bg-bb-cta text-bb-white dark:bg-primary"
+      : "text-bb-gray-700 hover:bg-bb-gray-100 dark:text-bb-gray-300 dark:hover:bg-muted/50",
+  );
+}
 
 export default function DashboardLayout() {
   return (
@@ -19,6 +34,16 @@ export default function DashboardLayout() {
           </div>
           <UserMenu />
         </div>
+        <nav
+          aria-label="Primary"
+          className="-mx-1 mt-3 flex items-center gap-2 overflow-x-auto px-1"
+        >
+          {NAV_ITEMS.map((item) => (
+            <NavLink key={item.to} to={item.to} className={navLinkClass}>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
       </header>
       <main className="flex-1 p-5">
         <Outlet />
