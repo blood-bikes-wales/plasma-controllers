@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { z } from "zod";
 
+import { FieldError } from "~/components/field-error";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
@@ -20,6 +22,7 @@ import {
   SheetTitle,
 } from "~/components/ui/sheet";
 import { Textarea } from "~/components/ui/textarea";
+import { fieldErrors } from "~/lib/validation";
 
 type RiderOption = { id: string; name: string };
 
@@ -49,6 +52,44 @@ type LogonShiftDrawerProps = {
 const SHEET_CONTENT_CLASS =
   "flex w-full max-w-full flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:max-w-full sm:max-w-xl data-[side=right]:sm:max-w-xl";
 
+const mileageFieldSchema = z
+  .string()
+  .trim()
+  .min(1, "Enter the start mileage")
+  .superRefine((value, ctx) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) {
+      ctx.addIssue({ code: "custom", message: "Enter a valid mileage" });
+    }
+  });
+
+/** Requires a variance reason once the start mileage differs from `bike.lastRecordedMileage`. */
+function createLogonShiftSchema(bikes: BikeOption[]) {
+  return z
+    .object({
+      riderId: z.string().min(1, "Select a rider"),
+      bikeId: z.string().min(1, "Select a bike"),
+      startMileage: mileageFieldSchema,
+      mileageVarianceReason: z.string(),
+    })
+    .superRefine((data, ctx) => {
+      const bike = bikes.find((candidate) => candidate.id === data.bikeId);
+      const startMileageValue = Number(data.startMileage);
+      if (
+        bike &&
+        Number.isFinite(startMileageValue) &&
+        startMileageValue !== bike.lastRecordedMileage &&
+        data.mileageVarianceReason.trim() === ""
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["mileageVarianceReason"],
+          message: "Enter a reason for the mileage difference",
+        });
+      }
+    });
+}
+
 export function LogonShiftDrawer({
   open,
   onOpenChange,
@@ -70,41 +111,45 @@ export function LogonShiftDrawer({
     }
   }, [open]);
 
-  const selectedRider = riders.find((rider) => rider.id === riderId);
   const selectedBike = bikes.find((bike) => bike.id === bikeId);
-
-  const trimmedStartMileage = startMileage.trim();
-  const startMileageValue = Number(trimmedStartMileage);
-  const hasStartMileage =
-    trimmedStartMileage !== "" &&
-    Number.isFinite(startMileageValue) &&
-    startMileageValue >= 0;
-
+  const startMileageValue = Number(startMileage.trim());
   const hasVariance =
     !!selectedBike &&
-    hasStartMileage &&
+    startMileage.trim() !== "" &&
+    Number.isFinite(startMileageValue) &&
     startMileageValue !== selectedBike.lastRecordedMileage;
 
-  const canSubmit =
-    !!selectedRider &&
-    !!selectedBike &&
-    hasStartMileage &&
-    (!hasVariance || varianceReason.trim() !== "");
+  const schema = createLogonShiftSchema(bikes);
+  const result = schema.safeParse({
+    riderId: riderId ?? "",
+    bikeId: bikeId ?? "",
+    startMileage,
+    mileageVarianceReason: varianceReason,
+  });
+  const errors = fieldErrors(result);
 
   function handleClose() {
     onOpenChange(false);
   }
 
   function handleSubmit() {
-    if (!selectedRider || !selectedBike || !canSubmit) return;
+    if (!result.success) return;
+
+    const rider = riders.find(
+      (candidate) => candidate.id === result.data.riderId,
+    );
+    const bike = bikes.find((candidate) => candidate.id === result.data.bikeId);
+    if (!rider || !bike) return;
 
     onLogon({
-      riderId: selectedRider.id,
-      riderName: selectedRider.name,
-      bikeId: selectedBike.id,
-      bikeRegistration: selectedBike.registration,
-      startMileage: startMileageValue,
-      mileageVarianceReason: hasVariance ? varianceReason.trim() : undefined,
+      riderId: rider.id,
+      riderName: rider.name,
+      bikeId: bike.id,
+      bikeRegistration: bike.registration,
+      startMileage: Number(result.data.startMileage),
+      mileageVarianceReason: hasVariance
+        ? result.data.mileageVarianceReason.trim()
+        : undefined,
     });
   }
 
@@ -133,6 +178,7 @@ export function LogonShiftDrawer({
               <Select value={riderId} onValueChange={setRiderId}>
                 <SelectTrigger
                   id="logon-rider"
+                  aria-invalid={!!errors.riderId}
                   className="h-11 w-full text-base dark:bg-input/30"
                 >
                   <SelectValue placeholder="Search or select rider…" />
@@ -162,6 +208,7 @@ export function LogonShiftDrawer({
               <Select value={bikeId} onValueChange={setBikeId}>
                 <SelectTrigger
                   id="logon-bike"
+                  aria-invalid={!!errors.bikeId}
                   className="h-11 w-full text-base dark:bg-input/30"
                 >
                   <SelectValue placeholder="Search or select bike…" />
@@ -195,6 +242,7 @@ export function LogonShiftDrawer({
                 min={0}
                 value={startMileage}
                 onChange={(event) => setStartMileage(event.target.value)}
+                aria-invalid={!!errors.startMileage}
                 className="h-11 text-base dark:bg-input/30"
                 placeholder="e.g. 15234"
               />
@@ -203,6 +251,7 @@ export function LogonShiftDrawer({
                   Last recorded mileage: {selectedBike.lastRecordedMileage}
                 </p>
               ) : null}
+              <FieldError message={errors.startMileage} />
             </div>
 
             {hasVariance ? (
@@ -225,9 +274,11 @@ export function LogonShiftDrawer({
                       onChange={(event) =>
                         setVarianceReason(event.target.value)
                       }
+                      aria-invalid={!!errors.mileageVarianceReason}
                       className="min-h-20 text-base dark:bg-input/30"
                       placeholder="e.g. Odometer reset after a repair"
                     />
+                    <FieldError message={errors.mileageVarianceReason} />
                   </div>
                 </CardContent>
               </Card>
@@ -238,7 +289,7 @@ export function LogonShiftDrawer({
             <Button
               type="button"
               className="h-12 w-full rounded-bb-button text-base font-bold"
-              disabled={!canSubmit}
+              disabled={!result.success}
               onClick={handleSubmit}
             >
               Log on

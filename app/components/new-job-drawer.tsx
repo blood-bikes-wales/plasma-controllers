@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { z } from "zod";
 
+import { FieldError } from "~/components/field-error";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
@@ -22,6 +24,7 @@ import {
 import { Switch } from "~/components/ui/switch";
 import { Textarea } from "~/components/ui/textarea";
 import { cn } from "~/lib/utils";
+import { fieldErrors } from "~/lib/validation";
 
 const MOCK_HOSPITALS = [
   "Royal Glamorgan Hospital",
@@ -36,17 +39,19 @@ const MOCK_HOSPITALS = [
   "Princess of Wales Hospital",
 ] as const;
 
-type NewJobFormState = {
-  callerName: string;
-  contactNumber: string;
-  pickupLocation: string;
-  pickupWard: string;
-  deliveryLocation: string;
-  deliveryWard: string;
-  isUrgent: boolean;
-  contents: string;
-  controllerNotes: string;
-};
+const newJobFormSchema = z.object({
+  callerName: z.string().trim().min(1, "Enter the caller's name"),
+  contactNumber: z.string().trim().min(1, "Enter a contact number"),
+  pickupLocation: z.string().trim().min(1, "Choose a pickup location"),
+  pickupWard: z.string(),
+  deliveryLocation: z.string().trim().min(1, "Choose a delivery location"),
+  deliveryWard: z.string(),
+  isUrgent: z.boolean(),
+  contents: z.string().trim().min(1, "Describe the item or contents"),
+  controllerNotes: z.string(),
+});
+
+type NewJobFormState = z.infer<typeof newJobFormSchema>;
 
 const EMPTY_FORM: NewJobFormState = {
   callerName: "",
@@ -90,20 +95,26 @@ function HospitalSelect({
   label,
   value,
   onValueChange,
+  error,
 }: {
   id: string;
   label: string;
   value: string;
   onValueChange: (value: string) => void;
+  error?: string;
 }) {
   return (
     <div className="space-y-2">
       <Label htmlFor={id} className="text-bb-gray-700 dark:text-bb-gray-300">
         {label}
       </Label>
-      <Select value={value || null} onValueChange={onValueChange}>
+      <Select
+        value={value || null}
+        onValueChange={(next) => onValueChange(next ?? "")}
+      >
         <SelectTrigger
           id={id}
+          aria-invalid={!!error}
           className="h-11 w-full text-base dark:bg-input/30"
         >
           <SelectValue placeholder="Search or select hospital…" />
@@ -116,6 +127,7 @@ function HospitalSelect({
           ))}
         </SelectContent>
       </Select>
+      <FieldError message={error} />
     </div>
   );
 }
@@ -126,10 +138,12 @@ export function NewJobDrawer({
   onContinueToAssign,
 }: NewJobDrawerProps) {
   const [form, setForm] = useState<NewJobFormState>(EMPTY_FORM);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!open) {
       setForm(EMPTY_FORM);
+      setErrors({});
     }
   }, [open]);
 
@@ -138,6 +152,12 @@ export function NewJobDrawer({
     value: NewJobFormState[K],
   ) {
     setForm((current) => ({ ...current, [field]: value }));
+    setErrors((current) => {
+      if (!(field in current)) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
   }
 
   function handleClose() {
@@ -145,7 +165,14 @@ export function NewJobDrawer({
   }
 
   function handleContinue() {
-    onContinueToAssign?.(form);
+    const result = newJobFormSchema.safeParse(form);
+    if (!result.success) {
+      setErrors(fieldErrors(result));
+      return;
+    }
+
+    setErrors({});
+    onContinueToAssign?.(result.data);
   }
 
   return (
@@ -184,9 +211,11 @@ export function NewJobDrawer({
                   onChange={(event) =>
                     updateField("callerName", event.target.value)
                   }
+                  aria-invalid={!!errors.callerName}
                   className="h-11 text-base dark:bg-input/30"
                   placeholder="e.g. Dr. Patel"
                 />
+                <FieldError message={errors.callerName} />
               </div>
               <div className="space-y-2">
                 <Label
@@ -203,9 +232,11 @@ export function NewJobDrawer({
                   onChange={(event) =>
                     updateField("contactNumber", event.target.value)
                   }
+                  aria-invalid={!!errors.contactNumber}
                   className="h-11 text-base dark:bg-input/30"
                   placeholder="e.g. 029 2074 7747"
                 />
+                <FieldError message={errors.contactNumber} />
               </div>
             </FormSection>
 
@@ -215,6 +246,7 @@ export function NewJobDrawer({
                 label="Pickup location"
                 value={form.pickupLocation}
                 onValueChange={(value) => updateField("pickupLocation", value)}
+                error={errors.pickupLocation}
               />
               <div className="space-y-2">
                 <Label
@@ -246,6 +278,7 @@ export function NewJobDrawer({
                 onValueChange={(value) =>
                   updateField("deliveryLocation", value)
                 }
+                error={errors.deliveryLocation}
               />
               <div className="space-y-2">
                 <Label
@@ -314,9 +347,11 @@ export function NewJobDrawer({
                   onChange={(event) =>
                     updateField("contents", event.target.value)
                   }
+                  aria-invalid={!!errors.contents}
                   className="h-11 text-base dark:bg-input/30"
                   placeholder="e.g. Blood samples, medical notes"
                 />
+                <FieldError message={errors.contents} />
               </div>
             </FormSection>
 
@@ -365,3 +400,4 @@ export function NewJobDrawer({
 }
 
 export type { NewJobFormState };
+export { newJobFormSchema };

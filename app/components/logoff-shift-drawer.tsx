@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { z } from "zod";
 
+import { FieldError } from "~/components/field-error";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -12,6 +14,7 @@ import {
   SheetTitle,
 } from "~/components/ui/sheet";
 import { Textarea } from "~/components/ui/textarea";
+import { fieldErrors } from "~/lib/validation";
 
 type LogoffShiftSummary = {
   id: string;
@@ -36,6 +39,30 @@ type LogoffShiftDrawerProps = {
 const SHEET_CONTENT_CLASS =
   "flex w-full max-w-full flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:max-w-full sm:max-w-xl data-[side=right]:sm:max-w-xl";
 
+/** Requires end mileage to be a valid number no lower than `startMileage`. */
+function createLogoffShiftSchema(startMileage: number) {
+  return z.object({
+    endMileage: z
+      .string()
+      .trim()
+      .min(1, "Enter the end mileage")
+      .superRefine((value, ctx) => {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) {
+          ctx.addIssue({ code: "custom", message: "Enter a valid mileage" });
+          return;
+        }
+        if (numeric < startMileage) {
+          ctx.addIssue({
+            code: "custom",
+            message: `End mileage cannot be lower than the start mileage of ${startMileage}.`,
+          });
+        }
+      }),
+    faults: z.string(),
+  });
+}
+
 export function LogoffShiftDrawer({
   open,
   onOpenChange,
@@ -52,25 +79,21 @@ export function LogoffShiftDrawer({
     }
   }, [open]);
 
-  const trimmedEndMileage = endMileage.trim();
-  const endMileageValue = Number(trimmedEndMileage);
-  const hasValidEndMileage =
-    trimmedEndMileage !== "" && Number.isFinite(endMileageValue);
-  const isBelowStartMileage =
-    !!shift && hasValidEndMileage && endMileageValue < shift.startMileage;
-
-  const canSubmit = !!shift && hasValidEndMileage && !isBelowStartMileage;
+  const schema = createLogoffShiftSchema(shift?.startMileage ?? 0);
+  const result = schema.safeParse({ endMileage, faults });
+  const errors = fieldErrors(result);
+  const canSubmit = !!shift && result.success;
 
   function handleClose() {
     onOpenChange(false);
   }
 
   function handleSubmit() {
-    if (!shift || !canSubmit) return;
+    if (!shift || !result.success) return;
 
     onLogoff(shift.id, {
-      endMileage: endMileageValue,
-      faults: faults.trim() || undefined,
+      endMileage: Number(result.data.endMileage),
+      faults: result.data.faults.trim() || undefined,
     });
   }
 
@@ -120,14 +143,9 @@ export function LogoffShiftDrawer({
                 onChange={(event) => setEndMileage(event.target.value)}
                 className="h-11 text-base dark:bg-input/30"
                 placeholder="e.g. 15298"
-                aria-invalid={isBelowStartMileage}
+                aria-invalid={!!errors.endMileage}
               />
-              {isBelowStartMileage ? (
-                <p className="text-sm font-medium text-bb-error">
-                  End mileage cannot be lower than the start mileage of{" "}
-                  {shift?.startMileage}.
-                </p>
-              ) : null}
+              <FieldError message={errors.endMileage} />
             </div>
 
             <div className="space-y-2">
