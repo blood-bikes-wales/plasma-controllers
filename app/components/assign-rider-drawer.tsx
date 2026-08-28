@@ -1,5 +1,6 @@
 import { CheckCircle2, MapPin, Phone, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
+import { z } from "zod";
 import { StatusBadge } from "~/components/status-badge";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -13,6 +14,10 @@ import {
   SheetTitle,
 } from "~/components/ui/sheet";
 import { cn } from "~/lib/utils";
+
+const assignRiderFormSchema = z.object({
+  riderId: z.string().min(1, "Select a rider to continue"),
+});
 
 type RiderStatus = "available" | "busy" | "offline";
 
@@ -319,6 +324,9 @@ export function AssignRiderDrawer({
   const selectedRider = areaRiders.find(
     (rider) => rider.id === selectedRiderId,
   );
+  const isValid = assignRiderFormSchema.safeParse({
+    riderId: selectedRiderId ?? "",
+  }).success;
 
   useEffect(() => {
     if (!open) {
@@ -340,7 +348,11 @@ export function AssignRiderDrawer({
   }
 
   function handleConfirm() {
-    if (!selectedRider) return;
+    const result = assignRiderFormSchema.safeParse({
+      riderId: selectedRiderId ?? "",
+    });
+    if (!result.success || !selectedRider) return;
+
     setIsConfirmed(true);
     console.log("Assigned rider", { job, rider: selectedRider });
   }
@@ -446,7 +458,7 @@ export function AssignRiderDrawer({
                 <Button
                   type="button"
                   className="h-12 w-full rounded-bb-button text-base font-bold"
-                  disabled={!selectedRider}
+                  disabled={!isValid}
                   onClick={handleConfirm}
                 >
                   Confirm assignment

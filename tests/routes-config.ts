@@ -8,6 +8,7 @@ import JobsNewRoute from "~/routes/jobs-new";
 import JobsNewAssignRoute from "~/routes/jobs-new-assign";
 import LoginPage from "~/routes/login";
 import ProtectedLayout from "~/routes/protected-layout";
+import ShiftsPage from "~/routes/shifts";
 
 export const appRoutes: RouteObject[] = [
   { index: true, Component: Index },
@@ -19,6 +20,7 @@ export const appRoutes: RouteObject[] = [
         Component: DashboardLayout,
         children: [
           { path: "dashboard", Component: DashboardPage },
+          { path: "shifts", Component: ShiftsPage },
           {
             path: "jobs",
             Component: JobsPage,

@@ -81,4 +81,102 @@ describe("NewJobDrawer", () => {
       screen.queryByRole("heading", { name: "New Job" }),
     ).not.toBeInTheDocument();
   });
+
+  it("blocks continuing and shows inline errors when required fields are empty", async () => {
+    const user = userEvent.setup();
+    const onContinueToAssign = vi.fn();
+
+    render(
+      <NewJobDrawer
+        open
+        onOpenChange={() => {}}
+        onContinueToAssign={onContinueToAssign}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Continue to assign" }),
+    );
+
+    expect(onContinueToAssign).not.toHaveBeenCalled();
+    expect(screen.getByText("Enter the caller's name")).toBeInTheDocument();
+    expect(screen.getByText("Enter a contact number")).toBeInTheDocument();
+    expect(screen.getByText("Choose a pickup location")).toBeInTheDocument();
+    expect(screen.getByText("Choose a delivery location")).toBeInTheDocument();
+    expect(
+      screen.getByText("Describe the item or contents"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Caller name")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+  });
+
+  it("clears a field's error as soon as it is edited", async () => {
+    const user = userEvent.setup();
+
+    render(<NewJobDrawer open onOpenChange={() => {}} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Continue to assign" }),
+    );
+    expect(screen.getByText("Enter the caller's name")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Caller name"), "Dr. Smith");
+
+    expect(
+      screen.queryByText("Enter the caller's name"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("calls onContinueToAssign with the parsed form once every required field is valid", async () => {
+    const user = userEvent.setup();
+    const onContinueToAssign = vi.fn();
+
+    render(
+      <NewJobDrawer
+        open
+        onOpenChange={() => {}}
+        onContinueToAssign={onContinueToAssign}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Caller name"), "Dr. Smith");
+    await user.type(screen.getByLabelText("Contact number"), "029 2074 7747");
+
+    await user.click(screen.getByRole("combobox", { name: "Pickup location" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Royal Glamorgan Hospital" }),
+    );
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Delivery location" }),
+    );
+    await user.click(
+      await screen.findByRole("option", {
+        name: "University Hospital of Wales",
+      }),
+    );
+
+    await user.type(
+      screen.getByLabelText("Item or contents description"),
+      "Blood samples",
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Continue to assign" }),
+    );
+
+    expect(onContinueToAssign).toHaveBeenCalledWith({
+      callerName: "Dr. Smith",
+      contactNumber: "029 2074 7747",
+      pickupLocation: "Royal Glamorgan Hospital",
+      pickupWard: "",
+      deliveryLocation: "University Hospital of Wales",
+      deliveryWard: "",
+      isUrgent: false,
+      contents: "Blood samples",
+      controllerNotes: "",
+    });
+  });
 });
