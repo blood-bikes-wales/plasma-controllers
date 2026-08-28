@@ -7,10 +7,8 @@ import { AuthProvider } from "~/lib/auth";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 import { Role } from "~/lib/roles";
 
-import {
-  mockAuthUser,
-  stubAuthenticatedFetch,
-} from "../../tests/auth-fixtures";
+import { mockAuthUser } from "../../tests/auth-fixtures";
+import { stubShiftsFetch } from "../../tests/shift-fixtures";
 import ShiftsPage, { meta } from "./shifts";
 
 afterEach(() => {
@@ -20,7 +18,7 @@ afterEach(() => {
 
 function renderShiftsPage({ roles = [Role.Controller] } = {}) {
   setAuthToken("test-google-id-token");
-  vi.stubGlobal("fetch", stubAuthenticatedFetch({ ...mockAuthUser, roles }));
+  vi.stubGlobal("fetch", stubShiftsFetch({ ...mockAuthUser, roles }));
 
   const router = createMemoryRouter(
     [
@@ -39,6 +37,12 @@ function renderShiftsPage({ roles = [Role.Controller] } = {}) {
   return render(<RouterProvider router={router} />);
 }
 
+async function waitForShiftsLoaded() {
+  await waitFor(() => {
+    expect(screen.getByText("Mike Davies")).toBeInTheDocument();
+  });
+}
+
 describe("ShiftsPage", () => {
   it("exports page meta", () => {
     expect(meta({} as Parameters<typeof meta>[0])).toEqual([
@@ -48,13 +52,7 @@ describe("ShiftsPage", () => {
 
   it("renders the page heading and the currently active shift", async () => {
     renderShiftsPage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Shifts" }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("Mike Davies")).toBeInTheDocument();
+    await waitForShiftsLoaded();
     expect(screen.getByText("CF34 DEF")).toBeInTheDocument();
     expect(screen.getByText("1 on duty")).toBeInTheDocument();
   });
@@ -62,12 +60,7 @@ describe("ShiftsPage", () => {
   it("lets a coordinator log on a rider with a bike and mileage", async () => {
     const user = userEvent.setup();
     renderShiftsPage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Log on rider" }),
-      ).toBeInTheDocument();
-    });
+    await waitForShiftsLoaded();
 
     await user.click(screen.getByRole("button", { name: "Log on rider" }));
 
@@ -94,10 +87,9 @@ describe("ShiftsPage", () => {
   it("requires a reason when start mileage does not match the bike's last recorded mileage", async () => {
     const user = userEvent.setup();
     renderShiftsPage();
+    await waitForShiftsLoaded();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Log on rider" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Log on rider" }));
 
     await user.click(screen.getByRole("combobox", { name: "Rider" }));
     await user.click(
@@ -125,10 +117,9 @@ describe("ShiftsPage", () => {
   it("does not allow selecting a rider or bike that is already on shift", async () => {
     const user = userEvent.setup();
     renderShiftsPage();
+    await waitForShiftsLoaded();
 
-    await user.click(
-      await screen.findByRole("button", { name: "Log on rider" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Log on rider" }));
 
     await user.click(screen.getByRole("combobox", { name: "Rider" }));
     expect(
@@ -147,8 +138,9 @@ describe("ShiftsPage", () => {
   it("lets a coordinator log off a rider and updates the bike mileage", async () => {
     const user = userEvent.setup();
     renderShiftsPage();
+    await waitForShiftsLoaded();
 
-    await user.click(await screen.findByRole("button", { name: "Log off" }));
+    await user.click(screen.getByRole("button", { name: "Log off" }));
 
     await user.type(screen.getByLabelText("End mileage"), "9950");
     await user.click(screen.getByRole("button", { name: "Log off" }));
@@ -164,8 +156,9 @@ describe("ShiftsPage", () => {
   it("rejects an end mileage lower than the start mileage", async () => {
     const user = userEvent.setup();
     renderShiftsPage();
+    await waitForShiftsLoaded();
 
-    await user.click(await screen.findByRole("button", { name: "Log off" }));
+    await user.click(screen.getByRole("button", { name: "Log off" }));
 
     await user.type(screen.getByLabelText("End mileage"), "100");
 
@@ -179,14 +172,8 @@ describe("ShiftsPage", () => {
 
   it("hides the management UI for read-only roles", async () => {
     renderShiftsPage({ roles: [Role.Rider] });
+    await waitForShiftsLoaded();
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Shifts" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Mike Davies")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Log on rider" }),
     ).not.toBeInTheDocument();

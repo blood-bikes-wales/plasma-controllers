@@ -16,14 +16,24 @@ export function stubAuthenticatedFetch(user: AuthUser = mockAuthUser) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/me")) {
-      return new Response(JSON.stringify(user), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return jsonResponse(user);
     }
-    return new Response(JSON.stringify({ message: "Not found" }), {
-      status: 404,
-      headers: { "Content-Type": "application/json" },
-    });
+    if (url.includes("/shifts/active")) {
+      return jsonResponse({ data: [] });
+    }
+    if (url.includes("/bikes")) {
+      return jsonResponse({ data: [] });
+    }
+    if (url.includes("/volunteers")) {
+      return jsonResponse({ data: [] });
+    }
+    return jsonResponse({ message: "Not found" }, 404);
+  });
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
   });
 }
