@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { clearActiveRole } from "~/lib/active-role";
 import { AuthProvider } from "~/lib/auth";
 import { clearAuthToken } from "~/lib/auth-token";
 
@@ -37,6 +37,7 @@ vi.mock("~/lib/google-sign-in", () => ({
 
 afterEach(() => {
   clearAuthToken();
+  clearActiveRole();
   vi.unstubAllGlobals();
 });
 
@@ -55,6 +56,8 @@ function renderLoginPage() {
           { path: "/", Component: LoginPage },
           { path: "/jobs", Component: () => <div>Jobs</div> },
           { path: "/login", Component: () => <div>Login</div> },
+          { path: "/no-access", Component: () => <div>No access</div> },
+          { path: "/select-role", Component: () => <div>Select role</div> },
         ],
       },
     ],

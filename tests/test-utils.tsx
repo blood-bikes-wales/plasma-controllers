@@ -6,14 +6,15 @@ import {
   RouterProvider,
 } from "react-router";
 import { afterEach, vi } from "vitest";
-
-import { AuthProvider } from "~/lib/auth";
+import { clearActiveRole } from "~/lib/active-role";
+import { AuthProvider, type AuthUser } from "~/lib/auth";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 
-import { stubAuthenticatedFetch } from "./auth-fixtures";
+import { mockAuthUser, stubAuthenticatedFetch } from "./auth-fixtures";
 
 afterEach(() => {
   clearAuthToken();
+  clearActiveRole();
   vi.unstubAllGlobals();
 });
 
@@ -35,14 +36,21 @@ export function renderWithRouter(
   initialEntry = "/",
   options?: Omit<RenderOptions, "wrapper"> & {
     authenticated?: boolean;
+    user?: AuthUser;
   },
 ) {
-  const { authenticated = false, ...renderOptions } = options ?? {};
+  const {
+    authenticated = false,
+    user = mockAuthUser,
+    ...renderOptions
+  } = options ?? {};
 
   if (authenticated) {
     setAuthToken("test-google-id-token");
-    vi.stubGlobal("fetch", stubAuthenticatedFetch());
-  } else {
+    vi.stubGlobal("fetch", stubAuthenticatedFetch(user));
+  }
+
+  if (!authenticated) {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {

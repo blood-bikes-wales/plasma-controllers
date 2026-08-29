@@ -43,16 +43,25 @@ export function roleLabel(role: Role): string {
   return ROLE_LABELS[role];
 }
 
-export function primaryRoleLabel(roles?: Role[]): string {
+export function primaryRole(roles?: Role[]): Role | null {
   if (!roles?.length) {
-    return ROLE_LABELS[Role.Controller];
+    return null;
   }
 
   for (const role of PREFERRED_ROLES) {
     if (roles.includes(role)) {
-      return ROLE_LABELS[role];
+      return role;
     }
   }
 
-  return ROLE_LABELS[roles[0] ?? Role.Controller];
+  return roles[0] ?? null;
+}
+
+export function primaryRoleLabel(roles?: Role[]): string {
+  const role = primaryRole(roles);
+  if (!role) {
+    return ROLE_LABELS[Role.Controller];
+  }
+
+  return ROLE_LABELS[role];
 }

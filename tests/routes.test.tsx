@@ -2,6 +2,8 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { Role } from "~/lib/roles";
+
 import { mockAuthUser, stubAuthenticatedFetch } from "./auth-fixtures";
 import { appRoutes } from "./routes-config";
 import { renderWithRouter } from "./test-utils";
@@ -181,5 +183,57 @@ describe("routes", () => {
       expect(screen.getByRole("heading", { name: "Jobs" })).toBeInTheDocument();
     });
     expect(screen.getByText("Plasma Controller")).toBeInTheDocument();
+  });
+
+  it("sends signed-in users with no Plasma roles to /no-access", async () => {
+    const { router } = renderWithRouter(appRoutes, "/jobs", {
+      authenticated: true,
+      user: { ...mockAuthUser, roles: [] },
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/no-access");
+      expect(
+        screen.getByRole("heading", {
+          name: "You don’t have access to Plasma",
+        }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("navigation", { name: "Primary" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("asks multi-role users to choose a session role before the jobs board", async () => {
+    const user = userEvent.setup();
+    const { router } = renderWithRouter(appRoutes, "/jobs", {
+      authenticated: true,
+      user: {
+        ...mockAuthUser,
+        roles: [Role.Controller, Role.Trustee],
+      },
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/select-role");
+      expect(
+        screen.getByRole("heading", { name: "Choose your role" }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("radio", { name: "Trustee" }));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/jobs");
+      expect(screen.getByRole("heading", { name: "Jobs" })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("link", { name: "Jobs" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Shifts" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Open user menu" }));
+    await waitFor(() => {
+      expect(screen.getByText("Trustee")).toBeInTheDocument();
+    });
   });
 });

@@ -4,6 +4,7 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LoginForm } from "~/components/login-form";
+import { clearActiveRole } from "~/lib/active-role";
 import { AuthProvider } from "~/lib/auth";
 import { clearAuthToken } from "~/lib/auth-token";
 
@@ -14,6 +15,7 @@ import {
 
 afterEach(() => {
   clearAuthToken();
+  clearActiveRole();
   vi.unstubAllGlobals();
 });
 
@@ -37,6 +39,8 @@ function renderLoginForm(
           },
           { path: "/jobs", element: <div>Jobs page</div> },
           { path: "/login", element: <div>Login page</div> },
+          { path: "/no-access", element: <div>No access page</div> },
+          { path: "/select-role", element: <div>Select role page</div> },
         ],
       },
     ],

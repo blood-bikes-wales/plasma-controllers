@@ -9,6 +9,8 @@ export default [
   index("routes/_index.tsx"),
   route("login", "routes/login.tsx"),
   layout("routes/protected-layout.tsx", [
+    route("no-access", "routes/no-access.tsx"),
+    route("select-role", "routes/select-role.tsx"),
     layout("routes/dashboard-layout.tsx", [
       route("dashboard", "routes/dashboard.tsx"),
       route("shifts", "routes/shifts.tsx"),
