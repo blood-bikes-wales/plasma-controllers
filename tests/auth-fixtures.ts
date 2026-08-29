@@ -3,6 +3,8 @@ import { vi } from "vitest";
 import type { AuthUser } from "~/lib/auth";
 import { Role } from "~/lib/roles";
 
+import { mockActiveJobs, mockCompletedJobs } from "./job-fixtures";
+
 export const mockAuthUser: AuthUser = {
   id: 1,
   name: "Steve Humphreys",
@@ -17,6 +19,12 @@ export function stubAuthenticatedFetch(user: AuthUser = mockAuthUser) {
     const url = String(input);
     if (url.includes("/me")) {
       return jsonResponse(user);
+    }
+    if (url.includes("/jobs/completed")) {
+      return jsonResponse({ data: mockCompletedJobs });
+    }
+    if (url.includes("/jobs/active")) {
+      return jsonResponse({ data: mockActiveJobs });
     }
     if (url.includes("/shifts/active")) {
       return jsonResponse({ data: [] });

@@ -100,8 +100,8 @@ describe("routes", () => {
         "href",
         "/jobs/new",
       );
+      expect(screen.getByText("JB-1042")).toBeInTheDocument();
     });
-    expect(screen.getByText("South Area")).toBeInTheDocument();
   });
 
   it("renders the shifts page within the app layout at /shifts", async () => {
@@ -146,9 +146,9 @@ describe("routes", () => {
       expect(
         screen.getByRole("heading", { name: "New Job", level: 2 }),
       ).toBeInTheDocument();
+      expect(screen.getByText("JB-1042")).toBeInTheDocument();
     });
     expect(screen.getByLabelText("Caller name")).toBeInTheDocument();
-    expect(screen.getByText("JB-1042")).toBeInTheDocument();
   });
 
   it("opens the assign rider drawer at /jobs/new/assign", async () => {
