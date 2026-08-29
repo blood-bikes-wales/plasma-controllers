@@ -1,5 +1,5 @@
 import { Clock, UserPlus } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { LogoffShiftDrawer } from "~/components/logoff-shift-drawer";
 import { LogonShiftDrawer } from "~/components/logon-shift-drawer";
@@ -8,63 +8,21 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { useAuth } from "~/lib/auth";
 import { Role } from "~/lib/roles";
+import {
+  type ActiveShift,
+  type Bike,
+  errorMessage,
+  fetchActiveShifts,
+  fetchBikes,
+  fetchVolunteers,
+  formatShiftStartedAt,
+  logoffShift,
+  logonShift,
+} from "~/lib/shifts";
 
 import type { Route } from "./+types/shifts";
 
-type Bike = {
-  id: string;
-  registration: string;
-  lastRecordedMileage: number;
-};
-
-type RiderOption = { id: string; name: string };
-
-type ActiveShift = {
-  id: string;
-  riderId: string;
-  riderName: string;
-  bikeId: string;
-  bikeRegistration: string;
-  startMileage: number;
-  startedAt: string;
-  mileageVarianceReason?: string;
-};
-
 const MANAGE_ROLES = new Set<Role>([Role.Admin, Role.Controller]);
-
-const RIDER_POOL: RiderOption[] = [
-  { id: "r1", name: "Sarah Jones" },
-  { id: "r2", name: "Mike Davies" },
-  { id: "r3", name: "Emma Williams" },
-  { id: "r4", name: "Tom Evans" },
-  { id: "r5", name: "Lisa Morgan" },
-];
-
-const BIKE_POOL: Bike[] = [
-  { id: "bk1", registration: "CF12 ABC", lastRecordedMileage: 15234 },
-  { id: "bk2", registration: "CF34 DEF", lastRecordedMileage: 9820 },
-  { id: "bk3", registration: "CF56 GHI", lastRecordedMileage: 22110 },
-  { id: "bk4", registration: "CF78 JKL", lastRecordedMileage: 5310 },
-];
-
-const INITIAL_ACTIVE_SHIFTS: ActiveShift[] = [
-  {
-    id: "sh1",
-    riderId: "r2",
-    riderName: "Mike Davies",
-    bikeId: "bk2",
-    bikeRegistration: "CF34 DEF",
-    startMileage: 9820,
-    startedAt: "Today, 08:15",
-  },
-];
-
-function formatNow() {
-  return new Date().toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 export function meta(_args: Route.MetaArgs) {
   return [{ title: "Shifts — Plasma Controller" }];
@@ -109,7 +67,7 @@ function ActiveShiftCard({
         <div className="flex items-center justify-between gap-3 border-t border-bb-gray-100 pt-4 dark:border-bb-gray-700">
           <div className="flex items-center gap-1.5 text-sm text-bb-gray-500 dark:text-bb-gray-400">
             <Clock className="size-4 shrink-0" aria-hidden="true" />
-            <span>Since {shift.startedAt}</span>
+            <span>Since {formatShiftStartedAt(shift.startedAt)}</span>
           </div>
           {canManage ? (
             <Button
@@ -132,12 +90,46 @@ export default function ShiftsPage() {
   const { user } = useAuth();
   const canManage = user?.roles.some((role) => MANAGE_ROLES.has(role)) ?? false;
 
-  const [bikes, setBikes] = useState<Bike[]>(BIKE_POOL);
-  const [activeShifts, setActiveShifts] = useState<ActiveShift[]>(
-    INITIAL_ACTIVE_SHIFTS,
-  );
+  const [bikes, setBikes] = useState<Bike[]>([]);
+  const [riders, setRiders] = useState<{ id: string; name: string }[]>([]);
+  const [activeShifts, setActiveShifts] = useState<ActiveShift[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isLogonOpen, setIsLogonOpen] = useState(false);
   const [logoffShiftId, setLogoffShiftId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [nextShifts, nextBikes, nextRiders] = await Promise.all([
+      fetchActiveShifts(),
+      fetchBikes(),
+      fetchVolunteers(),
+    ]);
+    setActiveShifts(nextShifts);
+    setBikes(nextBikes);
+    setRiders(nextRiders);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setIsLoading(true);
+    setError(null);
+    void load()
+      .catch((caught: unknown) => {
+        if (!cancelled) {
+          setError(errorMessage(caught, "Unable to load shifts."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [load]);
 
   const onShiftRiderIds = useMemo(
     () => new Set(activeShifts.map((shift) => shift.riderId)),
@@ -148,47 +140,59 @@ export default function ShiftsPage() {
     [activeShifts],
   );
 
-  const availableRiders = RIDER_POOL.filter(
+  const availableRiders = riders.filter(
     (rider) => !onShiftRiderIds.has(rider.id),
   );
   const availableBikes = bikes.filter((bike) => !onShiftBikeIds.has(bike.id));
-  const logoffShift = activeShifts.find((shift) => shift.id === logoffShiftId);
+  const shiftToLogoff = activeShifts.find(
+    (shift) => shift.id === logoffShiftId,
+  );
 
-  function handleLogon(input: {
+  async function handleLogon(input: {
     riderId: string;
-    riderName: string;
     bikeId: string;
-    bikeRegistration: string;
     startMileage: number;
     mileageVarianceReason?: string;
   }) {
-    setActiveShifts((current) => [
-      ...current,
-      {
-        id: `sh-${Date.now()}`,
-        startedAt: `Today, ${formatNow()}`,
-        ...input,
-      },
-    ]);
-    setIsLogonOpen(false);
+    setError(null);
+    try {
+      const shift = await logonShift({
+        riderId: input.riderId,
+        bikeId: input.bikeId,
+        startMileage: input.startMileage,
+        mileageVarianceReason: input.mileageVarianceReason,
+      });
+      setActiveShifts((current) => [...current, shift]);
+      setIsLogonOpen(false);
+    } catch (caught: unknown) {
+      setError(errorMessage(caught, "Unable to log the rider on."));
+    }
   }
 
-  function handleLogoff(
+  async function handleLogoff(
     shiftId: string,
     result: { endMileage: number; faults?: string },
   ) {
-    const shift = activeShifts.find((item) => item.id === shiftId);
-    if (shift) {
-      setBikes((current) =>
-        current.map((bike) =>
-          bike.id === shift.bikeId
-            ? { ...bike, lastRecordedMileage: result.endMileage }
-            : bike,
-        ),
+    setError(null);
+    try {
+      await logoffShift(shiftId, result);
+      const shift = activeShifts.find((item) => item.id === shiftId);
+      if (shift) {
+        setBikes((current) =>
+          current.map((bike) =>
+            bike.id === shift.bikeId
+              ? { ...bike, lastRecordedMileage: result.endMileage }
+              : bike,
+          ),
+        );
+      }
+      setActiveShifts((current) =>
+        current.filter((item) => item.id !== shiftId),
       );
+      setLogoffShiftId(null);
+    } catch (caught: unknown) {
+      setError(errorMessage(caught, "Unable to log the rider off."));
     }
-    setActiveShifts((current) => current.filter((item) => item.id !== shiftId));
-    setLogoffShiftId(null);
   }
 
   return (
@@ -208,6 +212,7 @@ export default function ShiftsPage() {
               type="button"
               className="h-11 gap-2 rounded-bb-button px-5 text-base font-bold sm:h-12"
               onClick={() => setIsLogonOpen(true)}
+              disabled={isLoading}
             >
               <UserPlus aria-hidden="true" />
               Log on rider
@@ -215,8 +220,18 @@ export default function ShiftsPage() {
           ) : null}
         </header>
 
+        {error ? (
+          <p className="text-sm text-bb-warning" role="alert">
+            {error}
+          </p>
+        ) : null}
+
         <section aria-label="Active shifts">
-          {activeShifts.length > 0 ? (
+          {isLoading ? (
+            <p className="py-12 text-center text-base text-bb-gray-500 dark:text-bb-gray-400">
+              Loading shifts…
+            </p>
+          ) : activeShifts.length > 0 ? (
             <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
               {activeShifts.map((shift) => (
                 <li key={shift.id}>
@@ -248,7 +263,17 @@ export default function ShiftsPage() {
         onOpenChange={(open) => {
           if (!open) setLogoffShiftId(null);
         }}
-        shift={logoffShift}
+        shift={
+          shiftToLogoff
+            ? {
+                id: shiftToLogoff.id,
+                riderName: shiftToLogoff.riderName,
+                bikeRegistration: shiftToLogoff.bikeRegistration,
+                startMileage: shiftToLogoff.startMileage,
+                startedAt: formatShiftStartedAt(shiftToLogoff.startedAt),
+              }
+            : undefined
+        }
         onLogoff={handleLogoff}
       />
     </>

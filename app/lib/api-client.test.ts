@@ -44,6 +44,25 @@ describe("apiFetch", () => {
     expect(headers.get("X-Request-Id")).toBe("spa-journey-1");
   });
 
+  it("sets Content-Type JSON when sending a body", async () => {
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiFetch("/shifts/logon", {
+      skipAuth: true,
+      method: "POST",
+      body: JSON.stringify({ riderId: "100001" }),
+    });
+
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("Content-Type")).toBe("application/json");
+  });
+
   it("attaches requestId to ApiError on failure", async () => {
     vi.stubGlobal(
       "fetch",

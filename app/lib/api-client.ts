@@ -83,6 +83,10 @@ export async function apiFetch<T = unknown>(
     headers.set("Accept", "application/json");
   }
 
+  if (init.body != null && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const requestId =
     requestIdOption ?? headers.get(REQUEST_ID_HEADER) ?? createRequestId();
   headers.set(REQUEST_ID_HEADER, requestId);
