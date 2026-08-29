@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import { clearActiveRole } from "~/lib/active-role";
 import { AuthProvider, useAuth } from "~/lib/auth";
 import { clearAuthToken, getAuthToken, setAuthToken } from "~/lib/auth-token";
 
@@ -12,6 +12,7 @@ import {
 
 afterEach(() => {
   clearAuthToken();
+  clearActiveRole();
   vi.unstubAllGlobals();
 });
 
@@ -137,6 +138,22 @@ describe("AuthProvider", () => {
     await waitFor(() => {
       expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
     });
+    expect(getAuthToken()).toBe("stored-google-id-token");
+  });
+
+  it("keeps an authenticated session when /me returns no Plasma roles", async () => {
+    setAuthToken("stored-google-id-token");
+    vi.stubGlobal(
+      "fetch",
+      stubAuthenticatedFetch({ ...mockAuthUser, roles: [] }),
+    );
+
+    renderAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
+    });
+    expect(screen.getByTestId("name")).toHaveTextContent(mockAuthUser.name);
     expect(getAuthToken()).toBe("stored-google-id-token");
   });
 });

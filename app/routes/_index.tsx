@@ -3,7 +3,7 @@ import { Navigate } from "react-router";
 import { useAuth } from "~/lib/auth";
 
 export default function Index() {
-  const { status } = useAuth();
+  const { status, postAuthPath } = useAuth();
 
   if (status === "loading") {
     return (
@@ -15,7 +15,9 @@ export default function Index() {
     );
   }
 
-  return (
-    <Navigate to={status === "authenticated" ? "/jobs" : "/login"} replace />
-  );
+  if (status !== "authenticated") {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <Navigate to={postAuthPath} replace />;
 }

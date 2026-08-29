@@ -4,6 +4,7 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UserMenu } from "~/components/user-menu";
+import { clearActiveRole } from "~/lib/active-role";
 import { AuthProvider } from "~/lib/auth";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 import { Role } from "~/lib/roles";
@@ -15,6 +16,7 @@ import {
 
 afterEach(() => {
   clearAuthToken();
+  clearActiveRole();
   vi.unstubAllGlobals();
 });
 
@@ -42,6 +44,7 @@ function renderUserMenu() {
         children: [
           { path: "/", element: <UserMenu /> },
           { path: "/login", element: <div>Login page</div> },
+          { path: "/select-role", element: <div>Select role page</div> },
         ],
       },
     ],
@@ -109,6 +112,7 @@ describe("UserMenu", () => {
           children: [
             { path: "/", element: <UserMenu /> },
             { path: "/login", element: <div>Login page</div> },
+            { path: "/select-role", element: <div>Select role page</div> },
           ],
         },
       ],
@@ -127,6 +131,54 @@ describe("UserMenu", () => {
     await openUserMenu(user);
 
     expect(screen.getByText("Rider")).toBeInTheDocument();
+  });
+
+  it("enables Change Role for multi-role users and opens the picker", async () => {
+    setAuthToken("test-token");
+    vi.stubGlobal(
+      "fetch",
+      stubAuthenticatedFetch({
+        ...mockAuthUser,
+        roles: [Role.Controller, Role.Trustee],
+      }),
+    );
+
+    const router = createMemoryRouter(
+      [
+        {
+          element: (
+            <AuthProvider>
+              <Outlet />
+            </AuthProvider>
+          ),
+          children: [
+            { path: "/", element: <UserMenu /> },
+            { path: "/login", element: <div>Login page</div> },
+            { path: "/select-role", element: <div>Select role page</div> },
+          ],
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+
+    const user = userEvent.setup();
+    render(<RouterProvider router={router} />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Open user menu" }),
+      ).toBeInTheDocument();
+    });
+
+    await openUserMenu(user);
+    const changeRole = screen.getByRole("menuitem", { name: "Change Role" });
+    expect(changeRole).not.toHaveAttribute("data-disabled");
+    await user.click(changeRole);
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/select-role");
+    });
+    expect(screen.getByText("Select role page")).toBeInTheDocument();
   });
 
   it("navigates to login when sign out is clicked", async () => {

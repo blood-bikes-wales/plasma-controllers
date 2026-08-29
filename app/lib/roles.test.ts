@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isRole,
   parseRoles,
+  primaryRole,
   primaryRoleLabel,
   Role,
   roleLabel,
@@ -31,6 +32,19 @@ describe("Role", () => {
 
   it("roleLabel capitalizes known roles", () => {
     expect(roleLabel(Role.Trustee)).toBe("Trustee");
+  });
+});
+
+describe("primaryRole", () => {
+  it("returns null when membership is empty", () => {
+    expect(primaryRole()).toBeNull();
+    expect(primaryRole([])).toBeNull();
+  });
+
+  it("prefers controller when present among multiple roles", () => {
+    expect(primaryRole([Role.Rider, Role.Controller, Role.Admin])).toBe(
+      Role.Controller,
+    );
   });
 });
 

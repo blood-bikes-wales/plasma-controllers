@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Navigate, useNavigate } from "react-router";
+import { Navigate } from "react-router";
 
 import { Button } from "~/components/ui/button";
 import { ApiError } from "~/lib/api-client";
@@ -64,8 +64,7 @@ export function LoginForm({
   requestIdToken,
   ...props
 }: LoginFormProps) {
-  const navigate = useNavigate();
-  const { status, loginWithCredential } = useAuth();
+  const { status, loginWithCredential, postAuthPath } = useAuth();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [googleButtonError, setGoogleButtonError] = useState<string | null>(
@@ -95,7 +94,6 @@ export function LoginForm({
         setIsSigningIn(true);
         try {
           await loginWithCredential(idToken);
-          navigate("/jobs", { replace: true });
         } catch (err) {
           setError(authErrorMessage(err));
         } finally {
@@ -123,10 +121,10 @@ export function LoginForm({
       cancelled = true;
       cleanup?.();
     };
-  }, [useTestSignIn, status, loginWithCredential, navigate]);
+  }, [useTestSignIn, status, loginWithCredential]);
 
   if (status === "authenticated") {
-    return <Navigate to="/jobs" replace />;
+    return <Navigate to={postAuthPath} replace />;
   }
 
   async function handleTestLogin() {
@@ -138,7 +136,6 @@ export function LoginForm({
     try {
       const idToken = await requestIdToken();
       await loginWithCredential(idToken);
-      navigate("/jobs", { replace: true });
     } catch (err) {
       setError(authErrorMessage(err));
     } finally {

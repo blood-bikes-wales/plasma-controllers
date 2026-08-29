@@ -7,7 +7,9 @@ import JobsPage from "~/routes/jobs";
 import JobsNewRoute from "~/routes/jobs-new";
 import JobsNewAssignRoute from "~/routes/jobs-new-assign";
 import LoginPage from "~/routes/login";
+import NoAccessPage from "~/routes/no-access";
 import ProtectedLayout from "~/routes/protected-layout";
+import SelectRolePage from "~/routes/select-role";
 import ShiftsPage from "~/routes/shifts";
 
 export const appRoutes: RouteObject[] = [
@@ -16,6 +18,8 @@ export const appRoutes: RouteObject[] = [
   {
     Component: ProtectedLayout,
     children: [
+      { path: "no-access", Component: NoAccessPage },
+      { path: "select-role", Component: SelectRolePage },
       {
         Component: DashboardLayout,
         children: [
