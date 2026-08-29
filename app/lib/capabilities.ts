@@ -24,8 +24,18 @@ export const NAV_AREAS: readonly NavArea[] = [
   { to: "/shifts", label: "Shifts", roles: ALL_ROLES },
 ];
 
+const CREATE_JOB_ROLES: readonly Role[] = [Role.Admin, Role.Controller];
+
 export function hasPlasmaAccess(roles: readonly Role[]): boolean {
   return roles.length > 0;
+}
+
+export function canCreateJobs(role: Role | null): boolean {
+  if (!role) {
+    return false;
+  }
+
+  return CREATE_JOB_ROLES.includes(role);
 }
 
 export function needsRoleSelection(

@@ -34,10 +34,12 @@ type GoogleAccounts = {
 };
 
 declare global {
+  interface GoogleNamespace {
+    accounts?: GoogleAccounts;
+  }
+
   interface Window {
-    google?: {
-      accounts: GoogleAccounts;
-    };
+    google?: GoogleNamespace;
   }
 }
 

@@ -96,12 +96,12 @@ describe("routes", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Jobs" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "New Job" })).toHaveAttribute(
+        "href",
+        "/jobs/new",
+      );
     });
     expect(screen.getByText("South Area")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "New Job" })).toHaveAttribute(
-      "href",
-      "/jobs/new",
-    );
   });
 
   it("renders the shifts page within the app layout at /shifts", async () => {
