@@ -24,6 +24,8 @@ export type JobListScope = "active" | "completed";
 
 export type JobLifecycleAction = "allocate" | "collect" | "deliver" | "cancel";
 
+export type JobAllowedAction = JobLifecycleAction | "relay";
+
 export type JobAllocatedRider = {
   id: string;
   name: string;
@@ -78,10 +80,17 @@ export type CancelJobPayload = {
   reason?: string;
 };
 
+export type RelayJobPayload = {
+  rendezvousPoints: PlaceLocation[];
+};
+
 export type DeliveryJob = {
   id: string;
   reference: string;
   status: JobStatus | string;
+  isRelay?: boolean;
+  parentJobId?: string | null;
+  legNumber?: number | null;
   sender: JobSender;
   collection: PlaceLocation;
   delivery: PlaceLocation;
@@ -92,7 +101,8 @@ export type DeliveryJob = {
   collectionRecord?: JobCollectionRecord | null;
   deliveryRecord?: JobDeliveryRecord | null;
   cancellation?: JobCancellation | null;
-  allowedActions?: JobLifecycleAction[];
+  legs?: DeliveryJob[];
+  allowedActions?: JobAllowedAction[];
 };
 
 type DataList<T> = { data: T[] };
@@ -122,10 +132,20 @@ export async function fetchJobById(jobId: string): Promise<DeliveryJob | null> {
     fetchJobs("completed"),
   ]);
 
-  return (
-    [...active, ...completed].find((candidate) => candidate.id === jobId) ??
-    null
-  );
+  const combined = [...active, ...completed];
+  const direct = combined.find((candidate) => candidate.id === jobId);
+  if (direct) {
+    return direct;
+  }
+
+  for (const parent of combined) {
+    const leg = parent.legs?.find((candidate) => candidate.id === jobId);
+    if (leg) {
+      return leg;
+    }
+  }
+
+  return null;
 }
 
 export async function performJobAction(
@@ -149,14 +169,28 @@ export async function cancelJob(
   });
 }
 
-export function allowedActionsForJob(job: DeliveryJob): JobLifecycleAction[] {
+export async function relayJob(
+  jobId: string,
+  payload: RelayJobPayload,
+): Promise<DeliveryJob> {
+  return apiFetch<DeliveryJob>(`/jobs/${jobId}/relay`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function allowedActionsForJob(job: DeliveryJob): JobAllowedAction[] {
   if (Array.isArray(job.allowedActions)) {
     return job.allowedActions;
   }
 
   switch (job.status) {
     case "New":
-      return ["allocate", "cancel"];
+      if (job.isRelay) {
+        return ["cancel"];
+      }
+
+      return ["allocate", "cancel", "relay"];
     case "Allocated":
       return ["collect", "cancel"];
     case "Collected":

@@ -2,6 +2,7 @@ import { Clock, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { AssignRiderDrawer } from "~/components/assign-rider-drawer";
+import { JobLegsPanel } from "~/components/job-legs-panel";
 import { NewJobDrawer } from "~/components/new-job-drawer";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -171,35 +172,46 @@ function JobCard({
   const reference = displayJobReference(job);
 
   return (
-    <Link
-      to={`/jobs/${job.id}`}
-      className="group block rounded-bb-card focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-    >
-      <Card className="h-full rounded-bb-card border-0 bg-bb-white py-5 shadow-none ring-1 ring-bb-gray-200 transition-colors hover:bg-bb-gray-50 dark:bg-card dark:ring-bb-gray-700 dark:hover:bg-muted/50">
-        <CardContent className="space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <span className="font-mono text-base font-medium text-bb-gray-900 dark:text-bb-gray-100">
-              {reference}
-            </span>
-            <Badge className={cn("shrink-0", statusBadgeClass(job.status))}>
-              {job.status}
-            </Badge>
-          </div>
+    <Card className="h-full rounded-bb-card border-0 bg-bb-white py-5 shadow-none ring-1 ring-bb-gray-200 transition-colors hover:bg-bb-gray-50 dark:bg-card dark:ring-bb-gray-700 dark:hover:bg-muted/50">
+      <CardContent className="space-y-4">
+        <Link
+          to={`/jobs/${job.id}`}
+          className="group block rounded-bb-card focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <span className="font-mono text-base font-medium text-bb-gray-900 dark:text-bb-gray-100">
+                {reference}
+                {job.isRelay ? (
+                  <span className="ml-2 text-xs font-sans font-semibold uppercase tracking-wide text-bb-cta dark:text-primary">
+                    Relay
+                  </span>
+                ) : null}
+              </span>
+              <Badge className={cn("shrink-0", statusBadgeClass(job.status))}>
+                {job.status}
+              </Badge>
+            </div>
 
-          <JobRouteIndicator
-            pickup={job.collection.address}
-            delivery={job.delivery.address}
-          />
+            <JobRouteIndicator
+              pickup={job.collection.address}
+              delivery={job.delivery.address}
+            />
 
-          <div className="flex items-center justify-between gap-3 border-t border-bb-gray-100 pt-4 dark:border-bb-gray-700">
-            <CreatedAt createdAt={job.createdAt} />
-            <span className="text-sm font-semibold text-bb-cta group-hover:underline dark:text-primary">
-              {actionLabel}
-            </span>
+            <div className="flex items-center justify-between gap-3 border-t border-bb-gray-100 pt-4 dark:border-bb-gray-700">
+              <CreatedAt createdAt={job.createdAt} />
+              <span className="text-sm font-semibold text-bb-cta group-hover:underline dark:text-primary">
+                {actionLabel}
+              </span>
+            </div>
           </div>
-        </CardContent>
-      </Card>
-    </Link>
+        </Link>
+
+        {job.isRelay && job.legs && job.legs.length > 0 ? (
+          <JobLegsPanel legs={job.legs} />
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 

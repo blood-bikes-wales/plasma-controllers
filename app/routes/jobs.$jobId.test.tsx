@@ -82,6 +82,17 @@ describe("Job detail lifecycle", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows relay conversion controls for a new job", async () => {
+    renderJobDetail();
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Convert to relay" }),
+    ).toBeInTheDocument();
+  });
+
   it("allocates a rider and advances the job status", async () => {
     const user = userEvent.setup();
     renderJobDetail();
