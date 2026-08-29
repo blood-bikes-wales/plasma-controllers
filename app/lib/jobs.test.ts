@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "~/lib/api-client";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
-import { createDeliveryJob, jobErrorMessage } from "~/lib/jobs";
+import {
+  createDeliveryJob,
+  displayJobReference,
+  fetchJobs,
+  formatJobCreatedAt,
+  jobErrorMessage,
+} from "~/lib/jobs";
 
 const COLLECTION = {
   placeId: "ChIJ-collection",
@@ -36,6 +42,7 @@ const CREATED_JOB = {
 afterEach(() => {
   clearAuthToken();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("createDeliveryJob", () => {
@@ -72,6 +79,52 @@ describe("createDeliveryJob", () => {
     expect(String(url)).toMatch(/\/jobs$/);
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual(payload);
+  });
+});
+
+describe("fetchJobs", () => {
+  it("loads jobs for the requested scope", async () => {
+    setAuthToken("test-token");
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) => {
+        return new Response(JSON.stringify({ data: [CREATED_JOB] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchJobs("active")).resolves.toEqual([CREATED_JOB]);
+
+    const call = fetchMock.mock.calls[0];
+    expect(String(call?.[0])).toMatch(/\/jobs\/active$/);
+  });
+});
+
+describe("displayJobReference", () => {
+  it("prefers the API reference and falls back to the last six characters of the id", () => {
+    expect(
+      displayJobReference({ id: "abcdef123456", reference: "JB-1042" }),
+    ).toBe("JB-1042");
+    expect(displayJobReference({ id: "abcdef123456", reference: "  " })).toBe(
+      "123456",
+    );
+  });
+});
+
+describe("formatJobCreatedAt", () => {
+  it("labels a timestamp from today as Today", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-29T12:00:00"));
+
+    expect(formatJobCreatedAt("2026-08-29T09:42:00.000Z")).toMatch(
+      /^Today, \d{2}:\d{2}$/,
+    );
+  });
+
+  it("returns the original string when the timestamp is invalid", () => {
+    expect(formatJobCreatedAt("not-a-date")).toBe("not-a-date");
   });
 });
 

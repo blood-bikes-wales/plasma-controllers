@@ -13,6 +13,15 @@ export type JobSender = {
   organisation?: string | null;
 };
 
+export type JobStatus =
+  | "New"
+  | "Allocated"
+  | "Collected"
+  | "Delivered"
+  | "Cancelled";
+
+export type JobListScope = "active" | "completed";
+
 export type CreateJobPayload = {
   sender: JobSender;
   collection: PlaceLocation;
@@ -24,7 +33,7 @@ export type CreateJobPayload = {
 export type DeliveryJob = {
   id: string;
   reference: string;
-  status: string;
+  status: JobStatus | string;
   sender: JobSender;
   collection: PlaceLocation;
   delivery: PlaceLocation;
@@ -32,6 +41,8 @@ export type DeliveryJob = {
   serviceAreas: string[];
   createdAt: string | null;
 };
+
+type DataList<T> = { data: T[] };
 
 export const SERVICE_AREAS = [
   { value: "South", label: "South Area" },
@@ -45,6 +56,53 @@ export async function createDeliveryJob(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchJobs(scope: JobListScope): Promise<DeliveryJob[]> {
+  const body = await apiFetch<DataList<DeliveryJob>>(`/jobs/${scope}`);
+  return body.data;
+}
+
+export function displayJobReference(
+  job: Pick<DeliveryJob, "id" | "reference">,
+): string {
+  const reference = job.reference.trim();
+  if (reference.length > 0) {
+    return reference;
+  }
+
+  return job.id.slice(-6);
+}
+
+export function formatJobCreatedAt(createdAt: string | null): string {
+  if (!createdAt) {
+    return "";
+  }
+
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return createdAt;
+  }
+
+  const time = date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const today = new Date();
+  const sameDay =
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate();
+
+  if (sameDay) {
+    return `Today, ${time}`;
+  }
+
+  const day = date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+  return `${day}, ${time}`;
 }
 
 export function jobErrorMessage(error: unknown, fallback: string): string {

@@ -1,5 +1,5 @@
 import { Clock, Plus, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { AssignRiderDrawer } from "~/components/assign-rider-drawer";
 import { NewJobDrawer } from "~/components/new-job-drawer";
@@ -9,205 +9,115 @@ import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { useAuth } from "~/lib/auth";
 import { canCreateJobs } from "~/lib/capabilities";
+import {
+  type DeliveryJob,
+  displayJobReference,
+  fetchJobs,
+  formatJobCreatedAt,
+  jobErrorMessage,
+} from "~/lib/jobs";
 import { cn } from "~/lib/utils";
 
 import type { Route } from "./+types/jobs";
 
-type JobStatus =
-  | "New"
-  | "Assigned"
-  | "Accepted"
-  | "Collected"
-  | "Delivered"
-  | "Escalated"
-  | "Cancelled";
-
-type FilterTab =
-  | "All"
-  | "New"
-  | "Assigned"
-  | "In Progress"
-  | "Completed"
-  | "Escalated";
-
-type ActiveJob = {
-  id: string;
-  reference: string;
-  urgent?: boolean;
-  pickup: string;
-  delivery: string;
-  status: JobStatus;
-  rider: string | null;
-  updatedAt: string;
-};
-
-type CompletedJob = {
-  id: string;
-  reference: string;
-  pickup: string;
-  delivery: string;
-  rider: string;
-  completedAt: string;
-  status: "Delivered" | "Cancelled";
-};
-
-const ACTIVE_AREA = "South Area";
+type FilterTab = "All" | "New" | "Allocated" | "Collected" | "Completed";
 
 const FILTER_TABS: FilterTab[] = [
   "All",
   "New",
-  "Assigned",
-  "In Progress",
+  "Allocated",
+  "Collected",
   "Completed",
-  "Escalated",
 ];
 
-const MOCK_ACTIVE_JOBS: ActiveJob[] = [
-  {
-    id: "1",
-    reference: "JB-1042",
-    urgent: true,
-    pickup: "Royal Glamorgan Hospital",
-    delivery: "University Hospital of Wales",
-    status: "New",
-    rider: null,
-    updatedAt: "2 min ago",
-  },
-  {
-    id: "2",
-    reference: "JB-1038",
-    pickup: "Prince Charles Hospital",
-    delivery: "Royal Gwent Hospital",
-    status: "Assigned",
-    rider: "Sarah Jones",
-    updatedAt: "8 min ago",
-  },
-  {
-    id: "3",
-    reference: "JB-1035",
-    pickup: "Nevill Hall Hospital",
-    delivery: "Royal Glamorgan Hospital",
-    status: "Accepted",
-    rider: "Mike Davies",
-    updatedAt: "14 min ago",
-  },
-  {
-    id: "4",
-    reference: "JB-1031",
-    urgent: true,
-    pickup: "Bronglais General Hospital",
-    delivery: "Withybush General Hospital",
-    status: "Collected",
-    rider: "Emma Williams",
-    updatedAt: "22 min ago",
-  },
-  {
-    id: "5",
-    reference: "JB-1027",
-    pickup: "Morriston Hospital",
-    delivery: "Singleton Hospital",
-    status: "Escalated",
-    rider: "Tom Evans",
-    updatedAt: "35 min ago",
-  },
-  {
-    id: "6",
-    reference: "JB-1024",
-    pickup: "Princess of Wales Hospital",
-    delivery: "Royal Glamorgan Hospital",
-    status: "Assigned",
-    rider: "Lisa Morgan",
-    updatedAt: "41 min ago",
-  },
-];
-
-const MOCK_COMPLETED_JOBS: CompletedJob[] = [
-  {
-    id: "101",
-    reference: "JB-1020",
-    pickup: "Royal Glamorgan Hospital",
-    delivery: "University Hospital of Wales",
-    rider: "Sarah Jones",
-    completedAt: "Today, 09:42",
-    status: "Delivered",
-  },
-  {
-    id: "102",
-    reference: "JB-1016",
-    pickup: "Prince Charles Hospital",
-    delivery: "Royal Gwent Hospital",
-    rider: "Mike Davies",
-    completedAt: "Today, 08:15",
-    status: "Delivered",
-  },
-  {
-    id: "103",
-    reference: "JB-1012",
-    pickup: "Nevill Hall Hospital",
-    delivery: "Royal Glamorgan Hospital",
-    rider: "Emma Williams",
-    completedAt: "Yesterday, 21:30",
-    status: "Cancelled",
-  },
-  {
-    id: "104",
-    reference: "JB-1008",
-    pickup: "Morriston Hospital",
-    delivery: "Singleton Hospital",
-    rider: "Tom Evans",
-    completedAt: "Yesterday, 18:05",
-    status: "Delivered",
-  },
-];
-
-function statusBadgeClass(status: JobStatus | CompletedJob["status"]) {
+function statusBadgeClass(status: string) {
   switch (status) {
     case "New":
       return "border-bb-status-pending-border bg-bb-white text-bb-gray-700 dark:bg-bb-gray-700 dark:text-bb-gray-100";
-    case "Assigned":
-    case "Accepted":
+    case "Allocated":
     case "Collected":
       return "border-bb-status-active-border bg-bb-status-active-bg text-bb-status-active-text dark:bg-bb-navy-light/30 dark:text-blue-200";
     case "Delivered":
       return "bg-bb-success-light text-bb-success dark:bg-bb-success/20 dark:text-green-300";
-    case "Escalated":
-      return "bg-bb-warning-light text-bb-warning dark:bg-bb-warning/20 dark:text-amber-300";
     case "Cancelled":
       return "bg-bb-error-light text-bb-error dark:bg-bb-error/20 dark:text-red-300";
     default:
-      return "";
+      return "border-bb-gray-200 bg-bb-white text-bb-gray-700 dark:bg-bb-gray-700 dark:text-bb-gray-100";
   }
 }
 
-function matchesFilter(job: ActiveJob, tab: FilterTab) {
+function tabClass(isActive: boolean) {
+  if (isActive) {
+    return "bg-bb-cta text-bb-white dark:bg-primary";
+  }
+
+  return "bg-bb-white text-bb-gray-700 ring-1 ring-bb-gray-200 hover:bg-bb-gray-50 dark:bg-card dark:text-bb-gray-300 dark:ring-bb-gray-700 dark:hover:bg-muted/50";
+}
+
+function matchesStatusTab(job: DeliveryJob, tab: FilterTab) {
   switch (tab) {
     case "All":
+    case "Completed":
       return true;
-    case "New":
-      return job.status === "New";
-    case "Assigned":
-      return job.status === "Assigned";
-    case "In Progress":
-      return job.status === "Accepted" || job.status === "Collected";
-    case "Escalated":
-      return job.status === "Escalated";
     default:
-      return false;
+      return job.status === tab;
   }
 }
 
-function matchesSearch(
-  query: string,
-  reference: string,
-  pickup: string,
-  delivery: string,
+function jobsForTab(
+  tab: FilterTab,
+  active: DeliveryJob[],
+  completed: DeliveryJob[],
 ) {
-  if (!query.trim()) return true;
+  if (tab === "Completed") {
+    return completed;
+  }
+
+  return active;
+}
+
+function emptyMessage(tab: FilterTab, hasSourceJobs: boolean) {
+  if (tab === "Completed" && !hasSourceJobs) {
+    return "No completed jobs.";
+  }
+
+  if (tab === "Completed") {
+    return "No completed jobs match your search.";
+  }
+
+  if (!hasSourceJobs) {
+    return "No active jobs.";
+  }
+
+  return "No jobs match the current filters.";
+}
+
+function sectionLabel(tab: FilterTab) {
+  if (tab === "Completed") {
+    return "Completed jobs";
+  }
+
+  return "Active jobs";
+}
+
+function actionLabel(tab: FilterTab) {
+  if (tab === "Completed") {
+    return "View";
+  }
+
+  return "Open";
+}
+
+function matchesSearch(query: string, job: DeliveryJob) {
+  if (!query.trim()) {
+    return true;
+  }
+
   const normalized = query.trim().toLowerCase();
   return (
-    reference.toLowerCase().includes(normalized) ||
-    pickup.toLowerCase().includes(normalized) ||
-    delivery.toLowerCase().includes(normalized)
+    displayJobReference(job).toLowerCase().includes(normalized) ||
+    job.collection.address.toLowerCase().includes(normalized) ||
+    job.delivery.address.toLowerCase().includes(normalized)
   );
 }
 
@@ -237,54 +147,29 @@ function JobRouteIndicator({
   );
 }
 
-function ActiveJobCard({ job }: { job: ActiveJob }) {
+function CreatedAt({ createdAt }: { createdAt: string | null }) {
+  const label = formatJobCreatedAt(createdAt);
+  if (!label) {
+    return null;
+  }
+
   return (
-    <Link
-      to={`/jobs/${job.id}`}
-      className="group block rounded-bb-card focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-    >
-      <Card className="h-full rounded-bb-card border-0 bg-bb-white py-5 shadow-none ring-1 ring-bb-gray-200 transition-colors hover:bg-bb-gray-50 dark:bg-card dark:ring-bb-gray-700 dark:hover:bg-muted/50">
-        <CardContent className="space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-base font-medium text-bb-gray-900 dark:text-bb-gray-100">
-                {job.reference}
-              </span>
-              {job.urgent ? (
-                <Badge className="bg-bb-warning-light text-bb-warning dark:bg-bb-warning/20 dark:text-amber-300">
-                  Urgent
-                </Badge>
-              ) : null}
-            </div>
-            <Badge className={cn("shrink-0", statusBadgeClass(job.status))}>
-              {job.status}
-            </Badge>
-          </div>
-
-          <JobRouteIndicator pickup={job.pickup} delivery={job.delivery} />
-
-          <div className="flex items-center justify-between gap-3 border-t border-bb-gray-100 pt-4 dark:border-bb-gray-700">
-            <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
-              {job.rider ?? "Unassigned"}
-            </p>
-            <div className="flex items-center gap-1.5 text-sm text-bb-gray-500 dark:text-bb-gray-400">
-              <Clock className="size-4 shrink-0" aria-hidden="true" />
-              <span>{job.updatedAt}</span>
-            </div>
-          </div>
-
-          <div className="flex justify-end">
-            <span className="text-sm font-semibold text-bb-cta group-hover:underline dark:text-primary">
-              Open
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+    <div className="flex items-center gap-1.5 text-sm text-bb-gray-500 dark:text-bb-gray-400">
+      <Clock className="size-4 shrink-0" aria-hidden="true" />
+      <span>{label}</span>
+    </div>
   );
 }
 
-function CompletedJobCard({ job }: { job: CompletedJob }) {
+function JobCard({
+  job,
+  actionLabel,
+}: {
+  job: DeliveryJob;
+  actionLabel: string;
+}) {
+  const reference = displayJobReference(job);
+
   return (
     <Link
       to={`/jobs/${job.id}`}
@@ -294,31 +179,84 @@ function CompletedJobCard({ job }: { job: CompletedJob }) {
         <CardContent className="space-y-4">
           <div className="flex items-start justify-between gap-3">
             <span className="font-mono text-base font-medium text-bb-gray-900 dark:text-bb-gray-100">
-              {job.reference}
+              {reference}
             </span>
             <Badge className={cn("shrink-0", statusBadgeClass(job.status))}>
               {job.status}
             </Badge>
           </div>
 
-          <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
-            {job.rider}
-          </p>
-
-          <JobRouteIndicator pickup={job.pickup} delivery={job.delivery} />
+          <JobRouteIndicator
+            pickup={job.collection.address}
+            delivery={job.delivery.address}
+          />
 
           <div className="flex items-center justify-between gap-3 border-t border-bb-gray-100 pt-4 dark:border-bb-gray-700">
-            <div className="flex items-center gap-1.5 text-sm text-bb-gray-500 dark:text-bb-gray-400">
-              <Clock className="size-4 shrink-0" aria-hidden="true" />
-              <span>{job.completedAt}</span>
-            </div>
+            <CreatedAt createdAt={job.createdAt} />
             <span className="text-sm font-semibold text-bb-cta group-hover:underline dark:text-primary">
-              View
+              {actionLabel}
             </span>
           </div>
         </CardContent>
       </Card>
     </Link>
+  );
+}
+
+function JobsBoard({
+  isLoading,
+  error,
+  jobs,
+  emptyMessage,
+  sectionLabel,
+  actionLabel,
+}: {
+  isLoading: boolean;
+  error: string | null;
+  jobs: DeliveryJob[];
+  emptyMessage: string;
+  sectionLabel: string;
+  actionLabel: string;
+}) {
+  if (isLoading) {
+    return (
+      <p className="py-12 text-center text-base text-bb-gray-500 dark:text-bb-gray-400">
+        Loading jobs…
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p
+        role="alert"
+        className="py-12 text-center text-base font-medium text-bb-error"
+      >
+        {error}
+      </p>
+    );
+  }
+
+  if (jobs.length === 0) {
+    return (
+      <section aria-label={sectionLabel}>
+        <p className="py-12 text-center text-base text-bb-gray-500 dark:text-bb-gray-400">
+          {emptyMessage}
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section aria-label={sectionLabel}>
+      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {jobs.map((job) => (
+          <li key={job.id}>
+            <JobCard job={job} actionLabel={actionLabel} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -336,6 +274,44 @@ export default function JobsPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("All");
+  const [activeJobs, setActiveJobs] = useState<DeliveryJob[]>([]);
+  const [completedJobs, setCompletedJobs] = useState<DeliveryJob[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const [nextActive, nextCompleted] = await Promise.all([
+      fetchJobs("active"),
+      fetchJobs("completed"),
+    ]);
+    setActiveJobs(nextActive);
+    setCompletedJobs(nextCompleted);
+  }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+    void load()
+      .catch((caught: unknown) => {
+        if (!cancelled) {
+          setError(jobErrorMessage(caught, "Unable to load jobs."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [load, status]);
 
   useEffect(() => {
     if (status !== "authenticated") {
@@ -362,30 +338,24 @@ export default function JobsPage() {
     }
   }
 
-  const filteredActiveJobs = MOCK_ACTIVE_JOBS.filter(
+  function handleCreated() {
+    navigate("/jobs");
+    void load();
+  }
+
+  const sourceJobs = jobsForTab(activeTab, activeJobs, completedJobs);
+  const visibleJobs = sourceJobs.filter(
     (job) =>
-      matchesFilter(job, activeTab) &&
-      matchesSearch(searchQuery, job.reference, job.pickup, job.delivery),
+      matchesStatusTab(job, activeTab) && matchesSearch(searchQuery, job),
   );
-
-  const filteredCompletedJobs = MOCK_COMPLETED_JOBS.filter((job) =>
-    matchesSearch(searchQuery, job.reference, job.pickup, job.delivery),
-  );
-
-  const showCompleted = activeTab === "Completed";
 
   return (
     <>
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-[28px] font-extrabold text-bb-gray-900 dark:text-bb-gray-100">
-              Jobs
-            </h1>
-            <Badge className="bg-bb-navy text-bb-white dark:bg-bb-navy-light">
-              {ACTIVE_AREA}
-            </Badge>
-          </div>
+          <h1 className="text-[28px] font-extrabold text-bb-gray-900 dark:text-bb-gray-100">
+            Jobs
+          </h1>
           {canCreate && (
             <Button
               render={<Link to="/jobs/new" />}
@@ -432,9 +402,7 @@ export default function JobsPage() {
                 onClick={() => setActiveTab(tab)}
                 className={cn(
                   "shrink-0 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                  isActive
-                    ? "bg-bb-cta text-bb-white dark:bg-primary"
-                    : "bg-bb-white text-bb-gray-700 ring-1 ring-bb-gray-200 hover:bg-bb-gray-50 dark:bg-card dark:text-bb-gray-300 dark:ring-bb-gray-700 dark:hover:bg-muted/50",
+                  tabClass(isActive),
                 )}
               >
                 {tab}
@@ -443,45 +411,20 @@ export default function JobsPage() {
           })}
         </div>
 
-        {showCompleted ? (
-          <section aria-label="Completed jobs">
-            {filteredCompletedJobs.length > 0 ? (
-              <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredCompletedJobs.map((job) => (
-                  <li key={job.id}>
-                    <CompletedJobCard job={job} />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="py-12 text-center text-base text-bb-gray-500 dark:text-bb-gray-400">
-                No completed jobs match your search.
-              </p>
-            )}
-          </section>
-        ) : (
-          <section aria-label="Active jobs">
-            {filteredActiveJobs.length > 0 ? (
-              <ul className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredActiveJobs.map((job) => (
-                  <li key={job.id}>
-                    <ActiveJobCard job={job} />
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="py-12 text-center text-base text-bb-gray-500 dark:text-bb-gray-400">
-                No jobs match the current filters.
-              </p>
-            )}
-          </section>
-        )}
+        <JobsBoard
+          isLoading={isLoading}
+          error={error}
+          jobs={visibleJobs}
+          emptyMessage={emptyMessage(activeTab, sourceJobs.length > 0)}
+          sectionLabel={sectionLabel(activeTab)}
+          actionLabel={actionLabel(activeTab)}
+        />
       </div>
 
       <NewJobDrawer
         open={isNewJobOpen}
         onOpenChange={handleNewJobOpenChange}
-        onCreated={() => navigate("/jobs")}
+        onCreated={handleCreated}
       />
       <AssignRiderDrawer
         open={isAssignOpen}
