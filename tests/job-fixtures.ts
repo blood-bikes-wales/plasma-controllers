@@ -1,7 +1,7 @@
 import { vi } from "vitest";
 
 import type { AuthUser } from "~/lib/auth";
-import type { DeliveryJob } from "~/lib/jobs";
+import type { DeliveryJob, JobLifecycleAction } from "~/lib/jobs";
 
 const GLAMORGAN = {
   placeId: "ChIJ-glamorgan",
@@ -54,6 +54,7 @@ function job(
     contents: "Blood samples",
     serviceAreas: ["South"],
     createdAt: "2026-08-29T10:00:00.000Z",
+    allowedActions: ["allocate", "cancel"],
     ...overrides,
   };
 }
@@ -66,6 +67,7 @@ export const mockActiveJobs: DeliveryJob[] = [
     collection: GLAMORGAN,
     delivery: UHW,
     createdAt: "2026-08-29T10:02:00.000Z",
+    allowedActions: ["allocate", "cancel"],
   }),
   job({
     id: "22222222-2222-2222-2222-222222222222",
@@ -74,6 +76,13 @@ export const mockActiveJobs: DeliveryJob[] = [
     collection: PRINCE_CHARLES,
     delivery: GWENT,
     createdAt: "2026-08-29T09:50:00.000Z",
+    allowedActions: ["collect", "cancel"],
+    allocatedRider: {
+      id: "100001",
+      name: "Alex Morgan",
+      shiftId: "shift-1",
+      allocatedAt: "2026-08-29T09:55:00.000Z",
+    },
   }),
 ];
 
@@ -85,6 +94,7 @@ export const mockCompletedJobs: DeliveryJob[] = [
     collection: GLAMORGAN,
     delivery: UHW,
     createdAt: "2026-08-29T09:42:00.000Z",
+    allowedActions: [],
   }),
   job({
     id: "10310310-1111-1111-1111-111111111103",
@@ -93,6 +103,7 @@ export const mockCompletedJobs: DeliveryJob[] = [
     collection: NEVILL_HALL,
     delivery: GLAMORGAN,
     createdAt: "2026-08-28T21:30:00.000Z",
+    allowedActions: [],
   }),
 ];
 
@@ -103,6 +114,67 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+function applyLifecycleAction(
+  current: DeliveryJob,
+  action: JobLifecycleAction,
+  payload: Record<string, unknown>,
+): DeliveryJob {
+  if (action === "allocate") {
+    return {
+      ...current,
+      status: "Allocated",
+      allowedActions: ["collect", "cancel"],
+      allocatedRider: {
+        id: "100001",
+        name: "Alex Morgan",
+        shiftId: String(payload.shiftId ?? "shift-1"),
+        allocatedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  if (action === "collect") {
+    return {
+      ...current,
+      status: "Collected",
+      allowedActions: ["deliver", "cancel"],
+      collectionRecord: {
+        contentsConfirmed: Boolean(payload.contentsConfirmed),
+        suitablySealed: Boolean(payload.suitablySealed),
+        sealNumber:
+          typeof payload.sealNumber === "string" ? payload.sealNumber : null,
+        receiptNumber: String(payload.receiptNumber ?? "RCP-1"),
+        collectedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  if (action === "deliver") {
+    return {
+      ...current,
+      status: "Delivered",
+      allowedActions: [],
+      deliveryRecord: {
+        recipient: String(payload.recipient ?? "Recipient"),
+        deliveredAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  return {
+    ...current,
+    status: "Cancelled",
+    allowedActions: [],
+    cancellation: {
+      reason:
+        typeof payload.reason === "string" && payload.reason.length > 0
+          ? payload.reason
+          : null,
+      cancelledAt: new Date().toISOString(),
+    },
+  };
+}
+
 export function stubJobsFetch(
   user: AuthUser,
   {
@@ -110,17 +182,98 @@ export function stubJobsFetch(
     completed = mockCompletedJobs,
   }: { active?: DeliveryJob[]; completed?: DeliveryJob[] } = {},
 ) {
-  return vi.fn(async (input: RequestInfo | URL) => {
+  const activeState = [...active];
+  const completedState = [...completed];
+
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const method = init?.method?.toUpperCase() ?? "GET";
+
     if (url.includes("/me")) {
       return jsonResponse(user);
     }
+
+    if (url.includes("/shifts/active")) {
+      return jsonResponse({
+        data: [
+          {
+            id: "shift-1",
+            riderId: "100001",
+            riderName: "Alex Morgan",
+            bikeId: "bike-1",
+            bikeRegistration: "CF12 ABC",
+            startMileage: 12000,
+            startedAt: "2026-08-29T08:00:00.000Z",
+          },
+        ],
+      });
+    }
+
+    if (
+      method === "POST" &&
+      url.includes("/jobs/") &&
+      url.includes("/cancel")
+    ) {
+      const jobId = url.split("/jobs/")[1]?.split("/")[0] ?? "";
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const allJobs = [...activeState, ...completedState];
+      const index = allJobs.findIndex((candidate) => candidate.id === jobId);
+      if (index === -1) {
+        return jsonResponse({ message: "Not found" }, 404);
+      }
+
+      const updated = applyLifecycleAction(allJobs[index], "cancel", body);
+      if (updated.status !== "Cancelled") {
+        return jsonResponse(updated);
+      }
+
+      const activeIndex = activeState.findIndex(
+        (candidate) => candidate.id === jobId,
+      );
+      if (activeIndex >= 0) {
+        activeState.splice(activeIndex, 1);
+        completedState.unshift(updated);
+      }
+
+      return jsonResponse(updated);
+    }
+
+    const actionMatch = url.match(/\/jobs\/([^/]+)\/actions\/([^/]+)$/);
+    if (method === "POST" && actionMatch) {
+      const [, jobId, action] = actionMatch;
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const allJobs = [...activeState, ...completedState];
+      const current = allJobs.find((candidate) => candidate.id === jobId);
+      if (!current) {
+        return jsonResponse({ message: "Not found" }, 404);
+      }
+
+      const lifecycleAction = action as JobLifecycleAction;
+      const updated = applyLifecycleAction(current, lifecycleAction, body);
+      const activeIndex = activeState.findIndex(
+        (candidate) => candidate.id === jobId,
+      );
+      if (activeIndex < 0) {
+        return jsonResponse(updated);
+      }
+
+      if (updated.status === "Delivered" || updated.status === "Cancelled") {
+        activeState.splice(activeIndex, 1);
+        completedState.unshift(updated);
+        return jsonResponse(updated);
+      }
+
+      activeState[activeIndex] = updated;
+      return jsonResponse(updated);
+    }
+
     if (url.includes("/jobs/completed")) {
-      return jsonResponse({ data: completed });
+      return jsonResponse({ data: completedState });
     }
     if (url.includes("/jobs/active")) {
-      return jsonResponse({ data: active });
+      return jsonResponse({ data: activeState });
     }
+
     return jsonResponse({ message: "Not found" }, 404);
   });
 }

@@ -18,6 +18,7 @@ export default [
         route("new", "routes/jobs-new.tsx", [
           route("assign", "routes/jobs-new-assign.tsx"),
         ]),
+        route(":jobId", "routes/jobs.$jobId.tsx"),
       ]),
     ]),
   ]),

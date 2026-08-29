@@ -4,6 +4,7 @@ import Index from "~/routes/_index";
 import DashboardPage from "~/routes/dashboard";
 import DashboardLayout from "~/routes/dashboard-layout";
 import JobsPage from "~/routes/jobs";
+import JobsDetailPage from "~/routes/jobs.$jobId";
 import JobsNewRoute from "~/routes/jobs-new";
 import JobsNewAssignRoute from "~/routes/jobs-new-assign";
 import LoginPage from "~/routes/login";
@@ -34,6 +35,7 @@ export const appRoutes: RouteObject[] = [
                 Component: JobsNewRoute,
                 children: [{ path: "assign", Component: JobsNewAssignRoute }],
               },
+              { path: ":jobId", Component: JobsDetailPage },
             ],
           },
         ],

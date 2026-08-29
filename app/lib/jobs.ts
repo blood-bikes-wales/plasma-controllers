@@ -22,12 +22,60 @@ export type JobStatus =
 
 export type JobListScope = "active" | "completed";
 
+export type JobLifecycleAction = "allocate" | "collect" | "deliver" | "cancel";
+
+export type JobAllocatedRider = {
+  id: string;
+  name: string;
+  shiftId: string;
+  allocatedAt: string | null;
+};
+
+export type JobCollectionRecord = {
+  contentsConfirmed: boolean;
+  suitablySealed: boolean;
+  sealNumber: string | null;
+  receiptNumber: string;
+  collectedAt: string | null;
+};
+
+export type JobDeliveryRecord = {
+  recipient: string;
+  deliveredAt: string | null;
+};
+
+export type JobCancellation = {
+  reason: string | null;
+  cancelledAt: string | null;
+};
+
 export type CreateJobPayload = {
   sender: JobSender;
   collection: PlaceLocation;
   delivery: PlaceLocation;
   contents: string;
   serviceAreas: string[];
+};
+
+export type AllocateJobPayload = {
+  shiftId: string;
+};
+
+export type CollectJobPayload = {
+  contentsConfirmed: boolean;
+  suitablySealed: boolean;
+  sealNumber?: string;
+  receiptNumber: string;
+  collectedAt?: string;
+};
+
+export type DeliverJobPayload = {
+  recipient: string;
+  deliveredAt?: string;
+};
+
+export type CancelJobPayload = {
+  reason?: string;
 };
 
 export type DeliveryJob = {
@@ -40,6 +88,11 @@ export type DeliveryJob = {
   contents: string;
   serviceAreas: string[];
   createdAt: string | null;
+  allocatedRider?: JobAllocatedRider | null;
+  collectionRecord?: JobCollectionRecord | null;
+  deliveryRecord?: JobDeliveryRecord | null;
+  cancellation?: JobCancellation | null;
+  allowedActions?: JobLifecycleAction[];
 };
 
 type DataList<T> = { data: T[] };
@@ -61,6 +114,56 @@ export async function createDeliveryJob(
 export async function fetchJobs(scope: JobListScope): Promise<DeliveryJob[]> {
   const body = await apiFetch<DataList<DeliveryJob>>(`/jobs/${scope}`);
   return body.data;
+}
+
+export async function fetchJobById(jobId: string): Promise<DeliveryJob | null> {
+  const [active, completed] = await Promise.all([
+    fetchJobs("active"),
+    fetchJobs("completed"),
+  ]);
+
+  return (
+    [...active, ...completed].find((candidate) => candidate.id === jobId) ??
+    null
+  );
+}
+
+export async function performJobAction(
+  jobId: string,
+  action: Exclude<JobLifecycleAction, "cancel">,
+  payload: AllocateJobPayload | CollectJobPayload | DeliverJobPayload,
+): Promise<DeliveryJob> {
+  return apiFetch<DeliveryJob>(`/jobs/${jobId}/actions/${action}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function cancelJob(
+  jobId: string,
+  payload: CancelJobPayload = {},
+): Promise<DeliveryJob> {
+  return apiFetch<DeliveryJob>(`/jobs/${jobId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function allowedActionsForJob(job: DeliveryJob): JobLifecycleAction[] {
+  if (Array.isArray(job.allowedActions)) {
+    return job.allowedActions;
+  }
+
+  switch (job.status) {
+    case "New":
+      return ["allocate", "cancel"];
+    case "Allocated":
+      return ["collect", "cancel"];
+    case "Collected":
+      return ["deliver", "cancel"];
+    default:
+      return [];
+  }
 }
 
 export function displayJobReference(
@@ -115,4 +218,36 @@ export function jobErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback;
+}
+
+export function toDateTimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) {
+    return "";
+  }
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function fromDateTimeLocalValue(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const date = new Date(trimmed);
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return date.toISOString();
+}
+
+export function defaultDateTimeLocalValue(): string {
+  return toDateTimeLocalValue(new Date().toISOString());
 }
