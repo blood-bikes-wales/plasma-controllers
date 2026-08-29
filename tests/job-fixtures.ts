@@ -1,7 +1,11 @@
 import { vi } from "vitest";
 
 import type { AuthUser } from "~/lib/auth";
-import type { DeliveryJob, JobLifecycleAction } from "~/lib/jobs";
+import type {
+  DeliveryJob,
+  JobLifecycleAction,
+  PlaceLocation,
+} from "~/lib/jobs";
 
 const GLAMORGAN = {
   placeId: "ChIJ-glamorgan",
@@ -54,7 +58,7 @@ function job(
     contents: "Blood samples",
     serviceAreas: ["South"],
     createdAt: "2026-08-29T10:00:00.000Z",
-    allowedActions: ["allocate", "cancel"],
+    allowedActions: ["allocate", "cancel", "relay"],
     ...overrides,
   };
 }
@@ -67,7 +71,7 @@ export const mockActiveJobs: DeliveryJob[] = [
     collection: GLAMORGAN,
     delivery: UHW,
     createdAt: "2026-08-29T10:02:00.000Z",
-    allowedActions: ["allocate", "cancel"],
+    allowedActions: ["allocate", "cancel", "relay"],
   }),
   job({
     id: "22222222-2222-2222-2222-222222222222",
@@ -175,6 +179,41 @@ function applyLifecycleAction(
   };
 }
 
+function buildRelayLegs(
+  parent: DeliveryJob,
+  rendezvousPoints: PlaceLocation[],
+): DeliveryJob[] {
+  const points = [parent.collection, ...rendezvousPoints, parent.delivery];
+
+  return points.slice(0, -1).map((collection, index) => {
+    const delivery = points[index + 1];
+    return job({
+      id: `${parent.id}-leg-${index + 1}`,
+      reference: `${parent.reference}-L${index + 1}`,
+      status: "New",
+      parentJobId: parent.id,
+      legNumber: index + 1,
+      collection,
+      delivery,
+      allowedActions: ["allocate", "cancel"],
+    });
+  });
+}
+
+function applyRelayConversion(
+  parent: DeliveryJob,
+  rendezvousPoints: PlaceLocation[],
+): DeliveryJob {
+  const legs = buildRelayLegs(parent, rendezvousPoints);
+
+  return {
+    ...parent,
+    isRelay: true,
+    allowedActions: ["cancel"],
+    legs,
+  };
+}
+
 export function stubJobsFetch(
   user: AuthUser,
   {
@@ -184,6 +223,15 @@ export function stubJobsFetch(
 ) {
   const activeState = [...active];
   const completedState = [...completed];
+  const legState: DeliveryJob[] = [];
+
+  function allKnownJobs(): DeliveryJob[] {
+    return [...activeState, ...completedState, ...legState];
+  }
+
+  function findJob(jobId: string): DeliveryJob | undefined {
+    return allKnownJobs().find((candidate) => candidate.id === jobId);
+  }
 
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -209,6 +257,29 @@ export function stubJobsFetch(
       });
     }
 
+    if (method === "POST" && url.includes("/jobs/") && url.includes("/relay")) {
+      const jobId = url.split("/jobs/")[1]?.split("/")[0] ?? "";
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const current = findJob(jobId);
+      if (!current) {
+        return jsonResponse({ message: "Not found" }, 404);
+      }
+
+      const rendezvousPoints = Array.isArray(body.rendezvousPoints)
+        ? body.rendezvousPoints
+        : [];
+      const updated = applyRelayConversion(current, rendezvousPoints);
+      const activeIndex = activeState.findIndex(
+        (candidate) => candidate.id === jobId,
+      );
+      if (activeIndex >= 0) {
+        activeState[activeIndex] = updated;
+      }
+
+      legState.push(...(updated.legs ?? []));
+      return jsonResponse(updated);
+    }
+
     if (
       method === "POST" &&
       url.includes("/jobs/") &&
@@ -216,13 +287,12 @@ export function stubJobsFetch(
     ) {
       const jobId = url.split("/jobs/")[1]?.split("/")[0] ?? "";
       const body = init?.body ? JSON.parse(String(init.body)) : {};
-      const allJobs = [...activeState, ...completedState];
-      const index = allJobs.findIndex((candidate) => candidate.id === jobId);
-      if (index === -1) {
+      const current = findJob(jobId);
+      if (!current) {
         return jsonResponse({ message: "Not found" }, 404);
       }
 
-      const updated = applyLifecycleAction(allJobs[index], "cancel", body);
+      const updated = applyLifecycleAction(current, "cancel", body);
       if (updated.status !== "Cancelled") {
         return jsonResponse(updated);
       }
@@ -233,6 +303,14 @@ export function stubJobsFetch(
       if (activeIndex >= 0) {
         activeState.splice(activeIndex, 1);
         completedState.unshift(updated);
+        return jsonResponse(updated);
+      }
+
+      const legIndex = legState.findIndex(
+        (candidate) => candidate.id === jobId,
+      );
+      if (legIndex >= 0) {
+        legState[legIndex] = updated;
       }
 
       return jsonResponse(updated);
@@ -242,8 +320,7 @@ export function stubJobsFetch(
     if (method === "POST" && actionMatch) {
       const [, jobId, action] = actionMatch;
       const body = init?.body ? JSON.parse(String(init.body)) : {};
-      const allJobs = [...activeState, ...completedState];
-      const current = allJobs.find((candidate) => candidate.id === jobId);
+      const current = findJob(jobId);
       if (!current) {
         return jsonResponse({ message: "Not found" }, 404);
       }
@@ -253,17 +330,62 @@ export function stubJobsFetch(
       const activeIndex = activeState.findIndex(
         (candidate) => candidate.id === jobId,
       );
-      if (activeIndex < 0) {
+      if (activeIndex >= 0) {
+        if (updated.status === "Delivered") {
+          activeState.splice(activeIndex, 1);
+          completedState.unshift(updated);
+          return jsonResponse(updated);
+        }
+
+        if (updated.status === "Cancelled") {
+          activeState.splice(activeIndex, 1);
+          completedState.unshift(updated);
+          return jsonResponse(updated);
+        }
+
+        activeState[activeIndex] = updated;
         return jsonResponse(updated);
       }
 
-      if (updated.status === "Delivered" || updated.status === "Cancelled") {
-        activeState.splice(activeIndex, 1);
-        completedState.unshift(updated);
+      const legIndex = legState.findIndex(
+        (candidate) => candidate.id === jobId,
+      );
+      if (legIndex < 0) {
         return jsonResponse(updated);
       }
 
-      activeState[activeIndex] = updated;
+      legState[legIndex] = updated;
+      const parentId = updated.parentJobId;
+      if (!parentId) {
+        return jsonResponse(updated);
+      }
+
+      const parentIndex = activeState.findIndex(
+        (candidate) => candidate.id === parentId,
+      );
+      if (parentIndex < 0) {
+        return jsonResponse(updated);
+      }
+
+      const parent = activeState[parentIndex];
+      const nextLegs = (parent.legs ?? []).map((leg) =>
+        leg.id === updated.id ? updated : leg,
+      );
+      const statuses = nextLegs.map((leg) => leg.status);
+      let parentStatus = parent.status;
+      if (statuses.every((status) => status === "Delivered")) {
+        parentStatus = "Delivered";
+      }
+      if (statuses.some((status) => status === "Allocated")) {
+        parentStatus = "Allocated";
+      }
+
+      activeState[parentIndex] = {
+        ...parent,
+        status: parentStatus,
+        legs: nextLegs,
+      };
+
       return jsonResponse(updated);
     }
 

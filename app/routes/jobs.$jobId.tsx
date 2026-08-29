@@ -4,6 +4,8 @@ import { Link, useParams } from "react-router";
 import { z } from "zod";
 
 import { FieldError } from "~/components/field-error";
+import { JobLegsPanel } from "~/components/job-legs-panel";
+import { RelayJobForm } from "~/components/relay-job-form";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
@@ -30,6 +32,7 @@ import {
   fromDateTimeLocalValue,
   jobErrorMessage,
   performJobAction,
+  relayJob,
 } from "~/lib/jobs";
 import { type ActiveShift, fetchActiveShifts } from "~/lib/shifts";
 import { cn } from "~/lib/utils";
@@ -554,6 +557,9 @@ export default function JobDetailPage() {
               Cancelled: {job.cancellation.reason}
             </p>
           ) : null}
+          {job.isRelay && job.legs && job.legs.length > 0 ? (
+            <JobLegsPanel legs={job.legs} defaultExpanded />
+          ) : null}
         </CardContent>
       </Card>
 
@@ -561,6 +567,21 @@ export default function JobDetailPage() {
         <p role="alert" className="text-sm font-medium text-bb-error">
           {actionError}
         </p>
+      ) : null}
+
+      {canManage && allowed.includes("relay") ? (
+        <section
+          aria-label="Convert to relay"
+          className="rounded-bb-card bg-bb-white p-5 ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700"
+        >
+          <h2 className="mb-4 text-lg font-bold text-bb-gray-900 dark:text-bb-gray-100">
+            Convert to relay
+          </h2>
+          <RelayJobForm
+            isSubmitting={isSubmitting}
+            onSubmit={(payload) => runAction(() => relayJob(job.id, payload))}
+          />
+        </section>
       ) : null}
 
       {canManage && allowed.includes("allocate") ? (
