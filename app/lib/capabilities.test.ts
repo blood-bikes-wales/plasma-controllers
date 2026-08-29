@@ -42,14 +42,16 @@ describe("needsRoleSelection", () => {
 });
 
 describe("navAreasForRole", () => {
-  it("returns jobs and shifts for every Plasma role", () => {
+  it("returns jobs, shifts, and directory for every Plasma role", () => {
     expect(navAreasForRole(Role.Rider).map((area) => area.to)).toEqual([
       "/jobs",
       "/shifts",
+      "/directory",
     ]);
     expect(navAreasForRole(Role.Admin).map((area) => area.label)).toEqual([
       "Jobs",
       "Shifts",
+      "Directory",
     ]);
   });
 
@@ -69,6 +71,7 @@ describe("canAccessPath", () => {
   it("allows jobs nested routes and dashboard for a role", () => {
     expect(canAccessPath(Role.Controller, "/jobs")).toBe(true);
     expect(canAccessPath(Role.Controller, "/jobs/new")).toBe(true);
+    expect(canAccessPath(Role.Controller, "/directory")).toBe(true);
     expect(canAccessPath(Role.Controller, "/dashboard")).toBe(true);
     expect(canAccessPath(Role.Controller, "/select-role")).toBe(true);
   });
