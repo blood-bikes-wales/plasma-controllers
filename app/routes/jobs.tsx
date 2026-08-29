@@ -271,6 +271,9 @@ export default function JobsPage() {
   const canCreate = canCreateJobs(activeRole);
   const isNewJobOpen = location.pathname === "/jobs/new" && canCreate;
   const isAssignOpen = location.pathname === "/jobs/new/assign";
+  const isDetailRoute =
+    /^\/jobs\/[^/]+$/.test(location.pathname) &&
+    location.pathname !== "/jobs/new";
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("All");
@@ -292,6 +295,9 @@ export default function JobsPage() {
     if (status !== "authenticated") {
       return;
     }
+    if (isDetailRoute) {
+      return;
+    }
 
     let cancelled = false;
     setIsLoading(true);
@@ -311,7 +317,7 @@ export default function JobsPage() {
     return () => {
       cancelled = true;
     };
-  }, [load, status]);
+  }, [isDetailRoute, load, status]);
 
   useEffect(() => {
     if (status !== "authenticated") {
@@ -348,6 +354,10 @@ export default function JobsPage() {
     (job) =>
       matchesStatusTab(job, activeTab) && matchesSearch(searchQuery, job),
   );
+
+  if (isDetailRoute) {
+    return <Outlet />;
+  }
 
   return (
     <>

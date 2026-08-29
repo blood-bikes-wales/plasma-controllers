@@ -26,6 +26,10 @@ export const NAV_AREAS: readonly NavArea[] = [
 
 const CREATE_JOB_ROLES: readonly Role[] = [Role.Admin, Role.Controller];
 
+export function canManageJobs(role: Role | null): boolean {
+  return canCreateJobs(role);
+}
+
 export function hasPlasmaAccess(roles: readonly Role[]): boolean {
   return roles.length > 0;
 }
