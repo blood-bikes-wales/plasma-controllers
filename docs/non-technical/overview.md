@@ -2,37 +2,42 @@
 
 ## What this is
 
-**Plasma Controller** is the web tool Blood Bikes Wales controllers will use to see and organise medical courier jobs — pickups and deliveries between hospitals — and to assign volunteer riders.
+**Plasma Controller** is the web tool Blood Bikes Wales controllers use to manage medical courier jobs — pickups and deliveries between hospitals — assign riders, track shifts, and look up volunteers and bikes.
 
 It is the controller-facing product for day-to-day dispatch work. Brand and visual standards live in the [brand guidelines](../brand-guidelines.md).
 
 ## Who it’s for
 
-- **Controllers** — primary users of the jobs board
-- **Volunteer riders** — people controllers assign to jobs
-- **Charity leads / trustees** — care that the right people can use the tool safely
-- **Developers** — building the UI and (next) real sign-in and backend links
+- **Controllers** — primary users: jobs board, shift logon, dispatch
+- **Admins** — same operational access as controllers
+- **Volunteer riders and drivers** — can sign in; see jobs, shifts, and directory (job creation and shift management are limited to controllers/admins)
+- **Trustees** — oversight access to operational screens
+- **Developers** — building the UI and API integration
 
 ## How it works (simple)
 
-1. A controller opens the app and lands on the sign-in screen.
-2. They use **Login with Google** (today this is a placeholder that opens the jobs board without a real Google check).
-3. On **Jobs**, they can filter and search sample work, start a **new job**, and **assign a rider**.
-4. Sign-out in the user menu is also a placeholder for now.
+1. A controller opens the app and signs in with their **Blood Bikes Wales Google account**.
+2. If they hold more than one role (e.g. controller and rider), they **choose which role** to use for this session.
+3. On **Jobs**, they see live work from the system — filter by status, search, open a job, create new jobs with hospital addresses, assign riders, and progress jobs through collection and delivery. Relay jobs can be set up with handover points.
+4. On **Shifts**, they see who is on duty and can log riders on or off (controllers/admins).
+5. On **Directory**, they search for volunteers (by name, role, or area) or bikes (by registration) without loading full lists upfront.
+6. **Sign out** clears the session and returns to the login screen.
 
 ## What success looks like
 
 - Controllers can move quickly from a hospital call to a clear job and rider assignment
-- The board stays easy to scan (status, urgency, area)
-- Only authorised organisation accounts can sign in (once real auth is switched on)
+- The board stays easy to scan (status, area, reference)
+- Only authorised organisation Google accounts can sign in
+- Shift and directory information is available in one place alongside jobs
 - Look and feel stay consistent with Blood Bikes Wales brand guidelines
 
 ## Risks and limitations
 
-- **Sign-in is not real yet** — anyone who can open the app can click through to the board.
-- **Jobs are sample data** — create and assign do not save to a live system yet.
-- Some “open job” links are unfinished (job detail page still to come).
-- Dashboard text still notes that authentication gating is a future update.
+- Access depends on Google Workspace accounts registered with the backend — unknown accounts are rejected at sign-in.
+- The Google sign-in token lasts for the browser tab session; closing the tab requires signing in again.
+- Some users with multiple roles must pick a role each time they have not already chosen one.
+- Job detail loads by searching job lists rather than a dedicated single-job view on the server.
+- Maps autocomplete requires Google API keys to be configured in the deployment environment.
 
 ## Where to learn more
 
