@@ -22,6 +22,7 @@ const ALL_ROLES: readonly Role[] = [
 export const NAV_AREAS: readonly NavArea[] = [
   { to: "/jobs", label: "Jobs", roles: ALL_ROLES },
   { to: "/shifts", label: "Shifts", roles: ALL_ROLES },
+  { to: "/directory", label: "Directory", roles: ALL_ROLES },
 ];
 
 const CREATE_JOB_ROLES: readonly Role[] = [Role.Admin, Role.Controller];

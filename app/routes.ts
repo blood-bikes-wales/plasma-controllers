@@ -14,6 +14,7 @@ export default [
     layout("routes/dashboard-layout.tsx", [
       route("dashboard", "routes/dashboard.tsx"),
       route("shifts", "routes/shifts.tsx"),
+      route("directory", "routes/directory.tsx"),
       route("jobs", "routes/jobs.tsx", [
         route("new", "routes/jobs-new.tsx", [
           route("assign", "routes/jobs-new-assign.tsx"),
