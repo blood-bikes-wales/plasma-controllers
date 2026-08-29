@@ -1,5 +1,5 @@
 import { Clock, Plus, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { AssignRiderDrawer } from "~/components/assign-rider-drawer";
 import { NewJobDrawer } from "~/components/new-job-drawer";
@@ -7,6 +7,8 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
+import { useAuth } from "~/lib/auth";
+import { canCreateJobs } from "~/lib/capabilities";
 import { cn } from "~/lib/utils";
 
 import type { Route } from "./+types/jobs";
@@ -327,11 +329,26 @@ export function meta(_args: Route.MetaArgs) {
 export default function JobsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const isNewJobOpen = location.pathname === "/jobs/new";
+  const { status, activeRole } = useAuth();
+  const canCreate = canCreateJobs(activeRole);
+  const isNewJobOpen = location.pathname === "/jobs/new" && canCreate;
   const isAssignOpen = location.pathname === "/jobs/new/assign";
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("All");
+
+  useEffect(() => {
+    if (status !== "authenticated") {
+      return;
+    }
+    if (canCreate) {
+      return;
+    }
+    if (location.pathname !== "/jobs/new") {
+      return;
+    }
+    navigate("/jobs", { replace: true });
+  }, [canCreate, location.pathname, navigate, status]);
 
   function handleNewJobOpenChange(open: boolean) {
     if (!open) {
@@ -369,14 +386,16 @@ export default function JobsPage() {
               {ACTIVE_AREA}
             </Badge>
           </div>
-          <Button
-            render={<Link to="/jobs/new" />}
-            nativeButton={false}
-            className="h-11 gap-2 rounded-bb-button px-5 text-base font-bold sm:h-12"
-          >
-            <Plus aria-hidden="true" />
-            New Job
-          </Button>
+          {canCreate && (
+            <Button
+              render={<Link to="/jobs/new" />}
+              nativeButton={false}
+              className="h-11 gap-2 rounded-bb-button px-5 text-base font-bold sm:h-12"
+            >
+              <Plus aria-hidden="true" />
+              New Job
+            </Button>
+          )}
         </header>
 
         <div className="relative">
@@ -462,7 +481,7 @@ export default function JobsPage() {
       <NewJobDrawer
         open={isNewJobOpen}
         onOpenChange={handleNewJobOpenChange}
-        onContinueToAssign={() => navigate("/jobs/new/assign")}
+        onCreated={() => navigate("/jobs")}
       />
       <AssignRiderDrawer
         open={isAssignOpen}

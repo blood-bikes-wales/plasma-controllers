@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { fieldErrors } from "./validation";
+import { apiFieldErrors, fieldErrors } from "./validation";
 
 const schema = z.object({
   name: z.string().min(1, "Enter a name"),
@@ -39,5 +39,50 @@ describe("fieldErrors", () => {
     const result = multiIssueSchema.safeParse({ value: "" });
 
     expect(fieldErrors(result)).toEqual({ value: "Enter a value" });
+  });
+});
+
+describe("apiFieldErrors", () => {
+  it("returns no errors when the body has no errors map", () => {
+    expect(apiFieldErrors({ message: "Invalid" })).toEqual({});
+    expect(apiFieldErrors(null)).toEqual({});
+  });
+
+  it("maps nested Laravel keys onto form field names", () => {
+    expect(
+      apiFieldErrors({
+        message: "The given data was invalid.",
+        errors: {
+          "sender.name": ["Enter the caller's name"],
+          "sender.phone": ["Enter a contact number"],
+          "sender.organisation": ["Organisation is too long."],
+          "collection.placeId": [
+            "Collection location must include a Google Place ID.",
+          ],
+          "delivery.address": ["Delivery location must include an address."],
+          contents: ["Describe the item or contents"],
+          "serviceAreas.0": ["Choose at least one service area"],
+        },
+      }),
+    ).toEqual({
+      senderName: "Enter the caller's name",
+      senderPhone: "Enter a contact number",
+      senderOrganisation: "Organisation is too long.",
+      collection: "Collection location must include a Google Place ID.",
+      delivery: "Delivery location must include an address.",
+      contents: "Describe the item or contents",
+      serviceAreas: "Choose at least one service area",
+    });
+  });
+
+  it("keeps the first message when a field is reported twice", () => {
+    expect(
+      apiFieldErrors({
+        errors: {
+          "collection.placeId": ["Choose a place"],
+          "collection.address": ["Choose an address"],
+        },
+      }),
+    ).toEqual({ collection: "Choose a place" });
   });
 });

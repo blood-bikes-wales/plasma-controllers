@@ -2,17 +2,11 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 
 import { FieldError } from "~/components/field-error";
+import { PlaceLocationField } from "~/components/place-location-field";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -21,54 +15,62 @@ import {
   SheetHeader,
   SheetTitle,
 } from "~/components/ui/sheet";
-import { Switch } from "~/components/ui/switch";
-import { Textarea } from "~/components/ui/textarea";
-import { cn } from "~/lib/utils";
-import { fieldErrors } from "~/lib/validation";
+import { ApiError } from "~/lib/api-client";
+import {
+  type CreateJobPayload,
+  createDeliveryJob,
+  type DeliveryJob,
+  jobErrorMessage,
+  type PlaceLocation,
+  SERVICE_AREAS,
+} from "~/lib/jobs";
+import type { PlacesLookup } from "~/lib/places";
+import { recordUsedLocations } from "~/lib/saved-locations";
+import { apiFieldErrors, fieldErrors } from "~/lib/validation";
 
-const MOCK_HOSPITALS = [
-  "Royal Glamorgan Hospital",
-  "University Hospital of Wales",
-  "Prince Charles Hospital",
-  "Royal Gwent Hospital",
-  "Nevill Hall Hospital",
-  "Bronglais General Hospital",
-  "Withybush General Hospital",
-  "Morriston Hospital",
-  "Singleton Hospital",
-  "Princess of Wales Hospital",
-] as const;
-
-const newJobFormSchema = z.object({
-  callerName: z.string().trim().min(1, "Enter the caller's name"),
-  contactNumber: z.string().trim().min(1, "Enter a contact number"),
-  pickupLocation: z.string().trim().min(1, "Choose a pickup location"),
-  pickupWard: z.string(),
-  deliveryLocation: z.string().trim().min(1, "Choose a delivery location"),
-  deliveryWard: z.string(),
-  isUrgent: z.boolean(),
-  contents: z.string().trim().min(1, "Describe the item or contents"),
-  controllerNotes: z.string(),
+const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
+  placeId: z.string().min(1),
+  address: z.string().min(1),
+  latitude: z.number(),
+  longitude: z.number(),
 });
 
-type NewJobFormState = z.infer<typeof newJobFormSchema>;
+const newJobFormSchema = z.object({
+  senderName: z.string().trim().min(1, "Enter the caller's name"),
+  senderPhone: z.string().trim().min(1, "Enter a contact number"),
+  senderOrganisation: z.string(),
+  collection: placeLocationSchema
+    .nullable()
+    .refine((value): value is PlaceLocation => value !== null, {
+      message: "Choose a collection location from the place search",
+    }),
+  delivery: placeLocationSchema
+    .nullable()
+    .refine((value): value is PlaceLocation => value !== null, {
+      message: "Choose a delivery location from the place search",
+    }),
+  contents: z.string().trim().min(1, "Describe the item or contents"),
+  serviceAreas: z.array(z.string()).min(1, "Choose at least one service area"),
+});
+
+type NewJobFormState = z.input<typeof newJobFormSchema>;
 
 const EMPTY_FORM: NewJobFormState = {
-  callerName: "",
-  contactNumber: "",
-  pickupLocation: "",
-  pickupWard: "",
-  deliveryLocation: "",
-  deliveryWard: "",
-  isUrgent: false,
+  senderName: "",
+  senderPhone: "",
+  senderOrganisation: "",
+  collection: null,
+  delivery: null,
   contents: "",
-  controllerNotes: "",
+  serviceAreas: [],
 };
 
 type NewJobDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onContinueToAssign?: (form: NewJobFormState) => void;
+  onCreated?: (job: DeliveryJob) => void;
+  placesLookup?: PlacesLookup;
+  createJob?: (payload: CreateJobPayload) => Promise<DeliveryJob>;
 };
 
 function FormSection({
@@ -90,60 +92,68 @@ function FormSection({
   );
 }
 
-function HospitalSelect({
-  id,
-  label,
-  value,
-  onValueChange,
-  error,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onValueChange: (value: string) => void;
-  error?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id} className="text-bb-gray-700 dark:text-bb-gray-300">
-        {label}
-      </Label>
-      <Select
-        value={value || null}
-        onValueChange={(next) => onValueChange(next ?? "")}
-      >
-        <SelectTrigger
-          id={id}
-          aria-invalid={!!error}
-          className="h-11 w-full text-base dark:bg-input/30"
-        >
-          <SelectValue placeholder="Search or select hospital…" />
-        </SelectTrigger>
-        <SelectContent>
-          {MOCK_HOSPITALS.map((hospital) => (
-            <SelectItem key={hospital} value={hospital}>
-              {hospital}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <FieldError message={error} />
-    </div>
-  );
+function payloadFromForm(
+  form: z.output<typeof newJobFormSchema>,
+): CreateJobPayload {
+  const organisation = form.senderOrganisation.trim();
+  const sender = {
+    name: form.senderName,
+    phone: form.senderPhone,
+    organisation: organisation || undefined,
+  };
+
+  return {
+    sender,
+    collection: form.collection,
+    delivery: form.delivery,
+    contents: form.contents,
+    serviceAreas: form.serviceAreas,
+  };
+}
+
+function applyCreateError(error: unknown): {
+  fieldErrors: Record<string, string>;
+  formError?: string;
+} {
+  if (error instanceof ApiError && error.status === 422) {
+    const mapped = apiFieldErrors(error.body);
+    if (Object.keys(mapped).length > 0) {
+      return { fieldErrors: mapped };
+    }
+  }
+
+  return {
+    fieldErrors: {},
+    formError: jobErrorMessage(error, "Could not create the job. Try again."),
+  };
+}
+
+function createJobLabel(submitting: boolean): string {
+  if (submitting) {
+    return "Creating…";
+  }
+
+  return "Create job";
 }
 
 export function NewJobDrawer({
   open,
   onOpenChange,
-  onContinueToAssign,
+  onCreated,
+  placesLookup,
+  createJob = createDeliveryJob,
 }: NewJobDrawerProps) {
   const [form, setForm] = useState<NewJobFormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState<string | undefined>();
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setForm(EMPTY_FORM);
       setErrors({});
+      setFormError(undefined);
+      setSubmitting(false);
     }
   }, [open]);
 
@@ -153,9 +163,35 @@ export function NewJobDrawer({
   ) {
     setForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => {
-      if (!(field in current)) return current;
+      if (!(field in current)) {
+        return current;
+      }
       const next = { ...current };
       delete next[field];
+      return next;
+    });
+  }
+
+  function toggleServiceArea(area: string) {
+    setForm((current) => {
+      if (current.serviceAreas.includes(area)) {
+        return {
+          ...current,
+          serviceAreas: current.serviceAreas.filter((value) => value !== area),
+        };
+      }
+
+      return {
+        ...current,
+        serviceAreas: [...current.serviceAreas, area],
+      };
+    });
+    setErrors((current) => {
+      if (!("serviceAreas" in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next.serviceAreas;
       return next;
     });
   }
@@ -164,15 +200,28 @@ export function NewJobDrawer({
     onOpenChange(false);
   }
 
-  function handleContinue() {
+  async function handleCreate() {
     const result = newJobFormSchema.safeParse(form);
     if (!result.success) {
       setErrors(fieldErrors(result));
+      setFormError(undefined);
       return;
     }
 
     setErrors({});
-    onContinueToAssign?.(result.data);
+    setFormError(undefined);
+    setSubmitting(true);
+    try {
+      const job = await createJob(payloadFromForm(result.data));
+      recordUsedLocations([job.collection, job.delivery]);
+      onCreated?.(job);
+    } catch (error) {
+      const applied = applyCreateError(error);
+      setErrors(applied.fieldErrors);
+      setFormError(applied.formError);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -186,17 +235,20 @@ export function NewJobDrawer({
             New Job
           </SheetTitle>
           <SheetDescription>
-            Capture call details while speaking with the hospital. Nothing is
-            saved until you assign a rider.
+            Capture the sender and locations while speaking with the hospital.
+            The job is saved when you create it.
           </SheetDescription>
         </SheetHeader>
 
         <form
           className="flex min-h-0 flex-1 flex-col"
-          onSubmit={(event) => event.preventDefault()}
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleCreate();
+          }}
         >
           <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-            <FormSection title="Call details">
+            <FormSection title="Sender">
               <div className="space-y-2">
                 <Label
                   htmlFor="caller-name"
@@ -207,15 +259,15 @@ export function NewJobDrawer({
                 <Input
                   id="caller-name"
                   autoComplete="name"
-                  value={form.callerName}
+                  value={form.senderName}
                   onChange={(event) =>
-                    updateField("callerName", event.target.value)
+                    updateField("senderName", event.target.value)
                   }
-                  aria-invalid={!!errors.callerName}
+                  aria-invalid={!!errors.senderName}
                   className="h-11 text-base dark:bg-input/30"
                   placeholder="e.g. Dr. Patel"
                 />
-                <FieldError message={errors.callerName} />
+                <FieldError message={errors.senderName} />
               </div>
               <div className="space-y-2">
                 <Label
@@ -228,112 +280,63 @@ export function NewJobDrawer({
                   id="contact-number"
                   type="tel"
                   autoComplete="tel"
-                  value={form.contactNumber}
+                  value={form.senderPhone}
                   onChange={(event) =>
-                    updateField("contactNumber", event.target.value)
+                    updateField("senderPhone", event.target.value)
                   }
-                  aria-invalid={!!errors.contactNumber}
+                  aria-invalid={!!errors.senderPhone}
                   className="h-11 text-base dark:bg-input/30"
                   placeholder="e.g. 029 2074 7747"
                 />
-                <FieldError message={errors.contactNumber} />
+                <FieldError message={errors.senderPhone} />
               </div>
-            </FormSection>
-
-            <FormSection title="Pickup">
-              <HospitalSelect
-                id="pickup-location"
-                label="Pickup location"
-                value={form.pickupLocation}
-                onValueChange={(value) => updateField("pickupLocation", value)}
-                error={errors.pickupLocation}
-              />
               <div className="space-y-2">
                 <Label
-                  htmlFor="pickup-ward"
+                  htmlFor="organisation"
                   className="text-bb-gray-700 dark:text-bb-gray-300"
                 >
-                  Ward or department{" "}
+                  Organisation{" "}
                   <span className="font-normal text-bb-gray-500">
                     (optional)
                   </span>
                 </Label>
                 <Input
-                  id="pickup-ward"
-                  value={form.pickupWard}
+                  id="organisation"
+                  value={form.senderOrganisation}
                   onChange={(event) =>
-                    updateField("pickupWard", event.target.value)
+                    updateField("senderOrganisation", event.target.value)
                   }
+                  aria-invalid={!!errors.senderOrganisation}
                   className="h-11 text-base dark:bg-input/30"
-                  placeholder="e.g. A&E, Ward 4B"
+                  placeholder="e.g. Royal Glamorgan Hospital"
                 />
+                <FieldError message={errors.senderOrganisation} />
               </div>
+            </FormSection>
+
+            <FormSection title="Collection">
+              <PlaceLocationField
+                id="collection-location"
+                label="Collection location"
+                value={form.collection}
+                onChange={(next) => updateField("collection", next)}
+                error={errors.collection}
+                lookup={placesLookup}
+              />
             </FormSection>
 
             <FormSection title="Delivery">
-              <HospitalSelect
+              <PlaceLocationField
                 id="delivery-location"
                 label="Delivery location"
-                value={form.deliveryLocation}
-                onValueChange={(value) =>
-                  updateField("deliveryLocation", value)
-                }
-                error={errors.deliveryLocation}
+                value={form.delivery}
+                onChange={(next) => updateField("delivery", next)}
+                error={errors.delivery}
+                lookup={placesLookup}
               />
-              <div className="space-y-2">
-                <Label
-                  htmlFor="delivery-ward"
-                  className="text-bb-gray-700 dark:text-bb-gray-300"
-                >
-                  Ward or department{" "}
-                  <span className="font-normal text-bb-gray-500">
-                    (optional)
-                  </span>
-                </Label>
-                <Input
-                  id="delivery-ward"
-                  value={form.deliveryWard}
-                  onChange={(event) =>
-                    updateField("deliveryWard", event.target.value)
-                  }
-                  className="h-11 text-base dark:bg-input/30"
-                  placeholder="e.g. Pathology, ICU"
-                />
-              </div>
             </FormSection>
 
-            <FormSection title="Urgency & contents">
-              <div
-                className={cn(
-                  "flex min-h-14 items-center justify-between gap-4 rounded-xl border-2 p-4 transition-colors",
-                  form.isUrgent
-                    ? "border-bb-warning bg-bb-warning-light dark:border-bb-warning dark:bg-bb-warning/20"
-                    : "border-bb-gray-200 bg-bb-white dark:border-bb-gray-700 dark:bg-card",
-                )}
-              >
-                <div className="space-y-0.5">
-                  <Label
-                    htmlFor="is-urgent"
-                    className="text-base font-semibold text-bb-gray-900 dark:text-bb-gray-100"
-                  >
-                    Is urgent
-                  </Label>
-                  <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
-                    {form.isUrgent
-                      ? "Priority dispatch required"
-                      : "Standard delivery window"}
-                  </p>
-                </div>
-                <Switch
-                  id="is-urgent"
-                  checked={form.isUrgent}
-                  onCheckedChange={(checked) =>
-                    updateField("isUrgent", checked)
-                  }
-                  className="size-7 shrink-0 data-[size=default]:h-7 data-[size=default]:w-12"
-                />
-              </div>
-
+            <FormSection title="Contents">
               <div className="space-y-2">
                 <Label
                   htmlFor="contents"
@@ -355,34 +358,43 @@ export function NewJobDrawer({
               </div>
             </FormSection>
 
-            <FormSection title="Controller notes">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="controller-notes"
-                  className="text-bb-gray-700 dark:text-bb-gray-300"
-                >
-                  Extra instructions
-                </Label>
-                <Textarea
-                  id="controller-notes"
-                  value={form.controllerNotes}
-                  onChange={(event) =>
-                    updateField("controllerNotes", event.target.value)
-                  }
-                  className="min-h-28 text-base dark:bg-input/30"
-                  placeholder="Access codes, contact on arrival, timing constraints…"
-                />
-              </div>
+            <FormSection title="Service areas">
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium text-bb-gray-700 dark:text-bb-gray-300">
+                  Areas this job covers
+                </legend>
+                {SERVICE_AREAS.map((area) => (
+                  <label
+                    key={area.value}
+                    className="flex min-h-11 items-center gap-3 rounded-xl px-1 text-base font-medium text-bb-gray-900 dark:text-bb-gray-100"
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-5 shrink-0 rounded border-bb-gray-300 accent-bb-cta"
+                      checked={form.serviceAreas.includes(area.value)}
+                      onChange={() => toggleServiceArea(area.value)}
+                    />
+                    {area.label}
+                  </label>
+                ))}
+              </fieldset>
+              <FieldError message={errors.serviceAreas} />
             </FormSection>
+
+            {formError ? (
+              <p role="alert" className="text-sm font-medium text-bb-error">
+                {formError}
+              </p>
+            ) : null}
           </div>
 
           <SheetFooter className="shrink-0 gap-3 border-t border-bb-gray-100 bg-bb-white px-5 py-4 dark:border-bb-gray-700 dark:bg-card">
             <Button
-              type="button"
+              type="submit"
+              disabled={submitting}
               className="h-12 w-full rounded-bb-button text-base font-bold"
-              onClick={handleContinue}
             >
-              Continue to assign
+              {createJobLabel(submitting)}
             </Button>
             <Button
               type="button"
@@ -398,6 +410,3 @@ export function NewJobDrawer({
     </Sheet>
   );
 }
-
-export type { NewJobFormState };
-export { newJobFormSchema };

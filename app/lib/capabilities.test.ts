@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   canAccessPath,
+  canCreateJobs,
   hasPlasmaAccess,
   homePathForRole,
   navAreasForRole,
@@ -14,6 +15,17 @@ describe("hasPlasmaAccess", () => {
   it("is true only when the user has at least one Plasma role", () => {
     expect(hasPlasmaAccess([])).toBe(false);
     expect(hasPlasmaAccess([Role.Rider])).toBe(true);
+  });
+});
+
+describe("canCreateJobs", () => {
+  it("allows coordinator and administrator only", () => {
+    expect(canCreateJobs(Role.Controller)).toBe(true);
+    expect(canCreateJobs(Role.Admin)).toBe(true);
+    expect(canCreateJobs(Role.Rider)).toBe(false);
+    expect(canCreateJobs(Role.Trustee)).toBe(false);
+    expect(canCreateJobs(Role.Driver)).toBe(false);
+    expect(canCreateJobs(null)).toBe(false);
   });
 });
 
