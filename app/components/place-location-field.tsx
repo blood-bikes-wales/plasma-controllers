@@ -1,11 +1,11 @@
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, useEffect, useId, useMemo, useState } from "react";
 
 import { FieldError } from "~/components/field-error";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import type { PlaceLocation } from "~/lib/jobs";
-import { googlePlacesLookup, type PlacesLookup } from "~/lib/places";
+import { createGooglePlacesLookup, type PlacesLookup } from "~/lib/places";
 import { mostUsedLocations, recentLocations } from "~/lib/saved-locations";
 
 const SUGGEST_DEBOUNCE_MS = 250;
@@ -60,8 +60,10 @@ export function PlaceLocationField({
   value,
   onChange,
   error,
-  lookup = googlePlacesLookup,
+  lookup,
 }: PlaceLocationFieldProps) {
+  const defaultLookup = useMemo(() => createGooglePlacesLookup(), []);
+  const resolvedLookup = lookup ?? defaultLookup;
   const listboxId = useId();
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
@@ -84,7 +86,7 @@ export function PlaceLocationField({
     }
 
     const handle = window.setTimeout(() => {
-      void lookup
+      void resolvedLookup
         .suggest(trimmed)
         .then((next) => {
           setSuggestions(next);
@@ -101,13 +103,13 @@ export function PlaceLocationField({
     }, SUGGEST_DEBOUNCE_MS);
 
     return () => window.clearTimeout(handle);
-  }, [lookup, query, value]);
+  }, [resolvedLookup, query, value]);
 
   async function selectSuggestion(placeId: string, description: string) {
     setResolving(true);
     setSearchError(undefined);
     try {
-      const location = await lookup.details(placeId);
+      const location = await resolvedLookup.details(placeId);
       onChange(location);
       setQuery("");
       setSuggestions([]);

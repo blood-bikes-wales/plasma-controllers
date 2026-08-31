@@ -11,237 +11,198 @@ export type PlacesLookup = {
   details: (placeId: string) => Promise<PlaceLocation>;
 };
 
-type AutocompletePrediction = {
-  place_id: string;
-  description: string;
+const PLACES_AUTOCOMPLETE_URL =
+  "https://places.googleapis.com/v1/places:autocomplete";
+
+const AUTocomplete_FIELD_MASK =
+  "suggestions.placePrediction.placeId,suggestions.placePrediction.text.text";
+
+const PLACE_DETAILS_FIELD_MASK = "id,formattedAddress,location";
+
+const WALES_LOCATION_BIAS = {
+  rectangle: {
+    low: {
+      latitude: 51.35,
+      longitude: -5.65,
+    },
+    high: {
+      latitude: 53.45,
+      longitude: -2.65,
+    },
+  },
 };
 
-type AutocompleteService = {
-  getPlacePredictions: (
-    request: { input: string; componentRestrictions?: { country: string } },
-    callback: (
-      predictions: AutocompletePrediction[] | null,
-      status: string,
-    ) => void,
-  ) => void;
+type PlacePredictionText = {
+  text?: string;
 };
 
-type PlaceResult = {
-  place_id?: string;
-  formatted_address?: string;
-  name?: string;
-  geometry?: {
-    location?: {
-      lat: number | (() => number);
-      lng: number | (() => number);
-    };
+type AutocompleteSuggestion = {
+  placePrediction?: {
+    placeId?: string;
+    text?: PlacePredictionText;
   };
 };
 
-type PlacesService = {
-  getDetails: (
-    request: { placeId: string; fields: string[] },
-    callback: (place: PlaceResult | null, status: string) => void,
-  ) => void;
+type AutocompleteResponse = {
+  suggestions?: AutocompleteSuggestion[];
 };
 
-type GooglePlacesLibrary = {
-  AutocompleteService: new () => AutocompleteService;
-  PlacesService: new (attrContainer: HTMLElement) => PlacesService;
+type PlaceDetailsResponse = {
+  id?: string;
+  formattedAddress?: string;
+  location?: {
+    latitude?: number;
+    longitude?: number;
+  };
 };
 
-declare global {
-  interface GoogleNamespace {
-    maps?: {
-      places?: GooglePlacesLibrary;
-    };
+function createSessionToken(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
   }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-const MAPS_SCRIPT_BASE = "https://maps.googleapis.com/maps/api/js";
+function suggestionsFromBody(body: AutocompleteResponse): PlaceSuggestion[] {
+  const suggestions = body.suggestions ?? [];
 
-let scriptLoadPromise: Promise<void> | null = null;
-
-function placesLibrary(): GooglePlacesLibrary | null {
-  const places = window.google?.maps?.places;
-  if (!places?.AutocompleteService || !places.PlacesService) {
-    return null;
-  }
-
-  return places;
-}
-
-function mapsScriptSrc(apiKey: string): string {
-  const params = new URLSearchParams({
-    key: apiKey,
-    libraries: "places",
-  });
-  return `${MAPS_SCRIPT_BASE}?${params.toString()}`;
-}
-
-function loadMapsScript(): Promise<void> {
-  if (typeof window === "undefined") {
-    return Promise.reject(
-      new Error("Place search is only available in the browser"),
-    );
-  }
-
-  if (placesLibrary()) {
-    return Promise.resolve();
-  }
-
-  if (scriptLoadPromise) {
-    return scriptLoadPromise;
-  }
-
-  const apiKey = getGoogleMapsApiKey();
-  const src = mapsScriptSrc(apiKey);
-
-  scriptLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${src}"]`,
-    );
-    if (existing) {
-      existing.addEventListener("load", () => resolve());
-      existing.addEventListener("error", () =>
-        reject(new Error("Failed to load Google Maps")),
-      );
-      if (placesLibrary()) {
-        resolve();
-      }
-      return;
+  return suggestions.flatMap((suggestion) => {
+    const prediction = suggestion.placePrediction;
+    const placeId = prediction?.placeId;
+    const description = prediction?.text?.text;
+    if (!placeId || !description) {
+      return [];
     }
 
-    const script = document.createElement("script");
-    script.src = src;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => {
-      scriptLoadPromise = null;
-      reject(new Error("Failed to load Google Maps"));
-    };
-    document.head.appendChild(script);
+    return [{ placeId, description }];
   });
-
-  return scriptLoadPromise;
 }
 
-async function loadPlacesLibrary(): Promise<GooglePlacesLibrary> {
-  await loadMapsScript();
-  const places = placesLibrary();
-  if (!places) {
-    throw new Error("Google Places is unavailable");
-  }
+function locationFromDetails(body: PlaceDetailsResponse): PlaceLocation {
+  const latitude = body.location?.latitude;
+  const longitude = body.location?.longitude;
+  const address = body.formattedAddress;
+  const placeId = body.id;
 
-  return places;
-}
-
-function predictionsFromResponse(
-  predictions: AutocompletePrediction[] | null,
-  status: string,
-): PlaceSuggestion[] {
-  if (status === "ZERO_RESULTS") {
-    return [];
-  }
-
-  if (status !== "OK") {
-    throw new Error("Place search failed. Try again.");
-  }
-
-  return (predictions ?? []).map((prediction) => ({
-    placeId: prediction.place_id,
-    description: prediction.description,
-  }));
-}
-
-function readCoordinate(value: number | (() => number)): number {
-  if (typeof value === "function") {
-    return value();
-  }
-
-  return value;
-}
-
-function locationFromPlace(place: PlaceResult | null): PlaceLocation {
-  const geometry = place?.geometry?.location;
-  const address = place?.formatted_address ?? place?.name;
-  if (!place?.place_id || !address || !geometry) {
+  if (
+    !placeId ||
+    !address ||
+    latitude === undefined ||
+    longitude === undefined
+  ) {
     throw new Error("That place is missing map details. Choose another.");
   }
 
   return {
-    placeId: place.place_id,
+    placeId,
     address,
-    latitude: readCoordinate(geometry.lat),
-    longitude: readCoordinate(geometry.lng),
+    latitude,
+    longitude,
   };
 }
 
-function placesAttributionNode(): HTMLElement {
-  const existing = document.getElementById("google-places-attribution");
-  if (existing) {
-    return existing;
+async function readPlacesError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: { message?: string } };
+    if (body.error?.message) {
+      return body.error.message;
+    }
+  } catch {
+    // Fall through to generic message.
   }
 
-  const node = document.createElement("div");
-  node.id = "google-places-attribution";
-  node.setAttribute("aria-hidden", "true");
-  node.style.display = "none";
-  document.body.appendChild(node);
-  return node;
+  return "Place search failed. Try again.";
 }
 
-export async function suggestPlaces(query: string): Promise<PlaceSuggestion[]> {
-  const trimmed = query.trim();
-  if (trimmed.length < 2) {
-    return [];
+function placeDetailsUrl(placeId: string, sessionToken: string): string {
+  const params = new URLSearchParams({ sessionToken });
+  return `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?${params.toString()}`;
+}
+
+export function createGooglePlacesLookup(): PlacesLookup {
+  let sessionToken: string | null = null;
+
+  function ensureSessionToken(): string {
+    if (sessionToken) {
+      return sessionToken;
+    }
+
+    sessionToken = createSessionToken();
+    return sessionToken;
   }
 
-  const places = await loadPlacesLibrary();
-  const service = new places.AutocompleteService();
+  function clearSessionToken(): void {
+    sessionToken = null;
+  }
 
-  return new Promise((resolve, reject) => {
-    service.getPlacePredictions(
-      { input: trimmed, componentRestrictions: { country: "gb" } },
-      (predictions, status) => {
-        try {
-          resolve(predictionsFromResponse(predictions, status));
-        } catch (error) {
-          reject(error);
-        }
+  async function suggestPlaces(query: string): Promise<PlaceSuggestion[]> {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return [];
+    }
+
+    const apiKey = getGoogleMapsApiKey();
+    const response = await fetch(PLACES_AUTOCOMPLETE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": AUTocomplete_FIELD_MASK,
       },
-    );
-  });
+      body: JSON.stringify({
+        input: trimmed,
+        sessionToken: ensureSessionToken(),
+        includedRegionCodes: ["gb"],
+        regionCode: "gb",
+        languageCode: "en-GB",
+        locationBias: WALES_LOCATION_BIAS,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await readPlacesError(response));
+    }
+
+    const body = (await response.json()) as AutocompleteResponse;
+    return suggestionsFromBody(body);
+  }
+
+  async function placeDetails(placeId: string): Promise<PlaceLocation> {
+    const token = ensureSessionToken();
+    const apiKey = getGoogleMapsApiKey();
+    const response = await fetch(placeDetailsUrl(placeId, token), {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": PLACE_DETAILS_FIELD_MASK,
+      },
+    });
+
+    clearSessionToken();
+
+    if (!response.ok) {
+      throw new Error("Could not load that place. Try another.");
+    }
+
+    const body = (await response.json()) as PlaceDetailsResponse;
+
+    return locationFromDetails(body);
+  }
+
+  return {
+    suggest: suggestPlaces,
+    details: placeDetails,
+  };
+}
+
+export const googlePlacesLookup = createGooglePlacesLookup();
+
+export async function suggestPlaces(query: string): Promise<PlaceSuggestion[]> {
+  return googlePlacesLookup.suggest(query);
 }
 
 export async function placeDetails(placeId: string): Promise<PlaceLocation> {
-  const places = await loadPlacesLibrary();
-  const service = new places.PlacesService(placesAttributionNode());
-
-  return new Promise((resolve, reject) => {
-    service.getDetails(
-      {
-        placeId,
-        fields: ["place_id", "formatted_address", "name", "geometry"],
-      },
-      (place, status) => {
-        if (status !== "OK") {
-          reject(new Error("Could not load that place. Try another."));
-          return;
-        }
-
-        try {
-          resolve(locationFromPlace(place));
-        } catch (error) {
-          reject(error);
-        }
-      },
-    );
-  });
+  return googlePlacesLookup.details(placeId);
 }
-
-export const googlePlacesLookup: PlacesLookup = {
-  suggest: suggestPlaces,
-  details: placeDetails,
-};
