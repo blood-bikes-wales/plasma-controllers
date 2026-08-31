@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Plasma Controller is a single-page app for **Blood Bikes Wales** volunteer controllers. Controllers use it to view and organise medical courier jobs (pickup/delivery between hospitals) and assign riders. On this codebase revision, Google sign-in and job persistence are still stubs; the jobs UI is driven by mock data.
+Plasma Controller is a single-page app for **Blood Bikes Wales** volunteer controllers. Controllers sign in with Google Workspace, then manage medical courier jobs (pickup/delivery between hospitals), rider shifts, and a volunteer/bike directory — all backed by the plasma-api backend.
 
 ## Stack
 
@@ -11,21 +11,27 @@ Plasma Controller is a single-page app for **Blood Bikes Wales** volunteer contr
 | Language / runtime | TypeScript; CI Node 22; Docker Node 24 Alpine |
 | Framework / platform | React 19, React Router 8 (SPA, `ssr: false`), Vite 8 |
 | UI | Tailwind CSS 4, shadcn (base-nova), Base UI, Lucide |
-| Persistence | None — no API client or token store in `app/lib/` yet |
+| Auth | Google Identity Services (ID token); session in `sessionStorage` |
+| API | `apiFetch` → plasma-api (`VITE_API_BASE_URL`) |
+| Maps | Google Maps Places API (`VITE_GOOGLE_MAPS_API_KEY`) |
 | Lint / format | Biome |
 | Tests | Vitest, React Testing Library, user-event, jsdom |
-| Key integrations | Planned: Google sign-in + backend API (not wired in this revision) |
+| Key integrations | Google Sign-In, Google Maps Places, plasma-api |
 
 ## Entrypoints
 
 | Entrypoint | Path |
 |------------|------|
-| App shell | `app/root.tsx` |
+| App shell | `app/root.tsx` (`AuthProvider`) |
 | Route tree | `app/routes.ts` |
 | Index redirect | `app/routes/_index.tsx` → `/login` |
 | Login | `app/routes/login.tsx` |
+| Auth gate | `app/routes/protected-layout.tsx` |
 | App chrome | `app/routes/dashboard-layout.tsx` |
 | Jobs board | `app/routes/jobs.tsx` |
+| Job detail | `app/routes/jobs.$jobId.tsx` |
+| Shifts | `app/routes/shifts.tsx` |
+| Directory | `app/routes/directory.tsx` |
 | Dev server | `npm run dev` (typically `http://localhost:5173`) |
 | Production serve | `npm run build` then `npm run start` |
 
@@ -35,8 +41,14 @@ Plasma Controller is a single-page app for **Blood Bikes Wales** volunteer contr
 
 - Node.js (prefer CI’s Node 22 for local parity)
 - `npm install`
+- plasma-api running and reachable (default `http://localhost/api`)
+- Copy `.env.example` to `.env` and set:
 
-No `.env` / `VITE_*` variables are required in this revision.
+| Variable | Purpose |
+|----------|---------|
+| `VITE_API_BASE_URL` | plasma-api base URL (no trailing slash) |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID for Workspace sign-in |
+| `VITE_GOOGLE_MAPS_API_KEY` | Google Maps key for Places autocomplete |
 
 ### Build
 
@@ -71,20 +83,26 @@ Docker: multi-stage `Dockerfile` builds then runs `npm run start`.
 | Path | Role |
 |------|------|
 | `app/routes.ts` | Route registration |
-| `app/routes/login.tsx` / `app/components/login-form.tsx` | Login UI (stub navigate) |
-| `app/routes/dashboard-layout.tsx` | Header + `UserMenu` |
-| `app/routes/jobs.tsx` | Jobs board (mock data) |
-| `app/components/new-job-drawer.tsx` | New job sheet |
-| `app/components/assign-rider-drawer.tsx` | Assign rider sheet |
-| `app/lib/utils.ts` | `cn()` helper only |
-| `tests/` | Route integration helpers |
+| `app/lib/auth.tsx` | Auth context, `GET /me`, role state |
+| `app/lib/api-client.ts` | HTTP client with Bearer token |
+| `app/lib/capabilities.ts` | Nav and path access by role |
+| `app/lib/jobs.ts` | Job API helpers and types |
+| `app/lib/shifts.ts` | Shift logon/logoff API |
+| `app/lib/directory.ts` | Directory search API |
+| `app/lib/places.ts` | Google Maps Places wrapper |
+| `app/components/login-form.tsx` | Google Sign-In button |
+| `app/routes/jobs.tsx` | Jobs board (API-backed) |
+| `app/routes/jobs.$jobId.tsx` | Job detail and lifecycle |
+| `app/routes/shifts.tsx` | Active shifts UI |
+| `app/routes/directory.tsx` | Volunteer/bike search |
+| `tests/` | Route and lib unit tests |
 | `docs/brand-guidelines.md` | Brand / UI tokens |
 
 ## Pitfalls
 
 - Root `README.md` is still the React Router template (mentions SSR); this app sets `ssr: false`.
-- “Login with Google” only `console.log`s and navigates to `/jobs` — no GIS, no backend check (`app/components/login-form.tsx`).
-- Routes under `dashboard-layout` are **not** auth-gated; dashboard copy still says auth will come later.
-- Job create/assign does not persist; assign confirm logs to the console.
-- Links toward `/jobs/:id` appear in UI flows but that route is not registered.
+- Google ID token is stored in `sessionStorage` — closing the tab ends the session.
+- `fetchJobById` searches active + completed lists client-side; there is no dedicated `GET /jobs/:id` yet.
+- Job create and relay need a valid `VITE_GOOGLE_MAPS_API_KEY`; login needs `VITE_GOOGLE_CLIENT_ID`.
+- Only admin and controller roles can create jobs or manage shifts; other roles have read-oriented access.
 - Prefer these docs over the template README for product truth.
