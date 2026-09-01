@@ -12,6 +12,8 @@ export type DirectoryVolunteer = {
 export type DirectoryBike = {
   id: string;
   registration: string;
+  area?: string;
+  status?: "active" | "retired";
   lastRecordedMileage: number;
 };
 

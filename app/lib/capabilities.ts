@@ -14,6 +14,8 @@ const ALL_ROLES: readonly Role[] = [
   Role.Driver,
 ];
 
+const MANAGE_BIKE_ROLES: readonly Role[] = [Role.Admin, Role.Trustee];
+
 /**
  * Primary nav areas and which roles may see them.
  * Current screens are Viewer+ (any Plasma role). Later areas such as audit
@@ -23,9 +25,18 @@ export const NAV_AREAS: readonly NavArea[] = [
   { to: "/jobs", label: "Jobs", roles: ALL_ROLES },
   { to: "/shifts", label: "Shifts", roles: ALL_ROLES },
   { to: "/directory", label: "Directory", roles: ALL_ROLES },
+  { to: "/bikes", label: "Bikes", roles: MANAGE_BIKE_ROLES },
 ];
 
 const CREATE_JOB_ROLES: readonly Role[] = [Role.Admin, Role.Controller];
+
+export function canManageBikes(role: Role | null): boolean {
+  if (!role) {
+    return false;
+  }
+
+  return MANAGE_BIKE_ROLES.includes(role);
+}
 
 export function canManageJobs(role: Role | null): boolean {
   return canCreateJobs(role);

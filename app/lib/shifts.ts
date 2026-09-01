@@ -3,6 +3,8 @@ import { apiFetch } from "~/lib/api-client";
 export type Bike = {
   id: string;
   registration: string;
+  area?: string;
+  status?: "active" | "retired";
   lastRecordedMileage: number;
 };
 

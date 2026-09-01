@@ -106,16 +106,24 @@ function BikeCard({
               {bike.registration}
             </h2>
             <p className="mt-1 text-sm text-bb-gray-500 dark:text-bb-gray-400">
-              Last recorded mileage: {bike.lastRecordedMileage}
+              Last recorded mileage: {bike.lastRecordedMileage.toLocaleString()}
+              {bike.area ? ` · ${bike.area}` : ""}
             </p>
           </div>
-          <button
-            type="button"
-            className="text-sm font-semibold text-bb-cta hover:underline dark:text-primary"
-            onClick={onToggle}
-          >
-            {isExpanded ? "Hide history" : "Show history"}
-          </button>
+          <div className="flex flex-col items-end gap-2">
+            {bike.status === "retired" ? (
+              <Badge className="bg-bb-gray-100 text-bb-gray-700 dark:bg-muted dark:text-bb-gray-300">
+                Retired
+              </Badge>
+            ) : null}
+            <button
+              type="button"
+              className="text-sm font-semibold text-bb-cta hover:underline dark:text-primary"
+              onClick={onToggle}
+            >
+              {isExpanded ? "Hide history" : "Show history"}
+            </button>
+          </div>
         </div>
 
         {isExpanded && detail ? (

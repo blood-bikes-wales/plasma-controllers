@@ -37,28 +37,31 @@ export function renderWithRouter(
   options?: Omit<RenderOptions, "wrapper"> & {
     authenticated?: boolean;
     user?: AuthUser;
+    fetchStub?: ReturnType<typeof vi.fn>;
   },
 ) {
   const {
     authenticated = false,
     user = mockAuthUser,
+    fetchStub,
     ...renderOptions
   } = options ?? {};
 
   if (authenticated) {
     setAuthToken("test-google-id-token");
-    vi.stubGlobal("fetch", stubAuthenticatedFetch(user));
+    vi.stubGlobal("fetch", fetchStub ?? stubAuthenticatedFetch(user));
   }
 
   if (!authenticated) {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => {
-        return new Response(JSON.stringify({ message: "Unauthenticated" }), {
-          status: 401,
-          headers: { "Content-Type": "application/json" },
-        });
-      }),
+      fetchStub ??
+        vi.fn(async () => {
+          return new Response(JSON.stringify({ message: "Unauthenticated" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }),
     );
   }
 
