@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Role } from "~/lib/roles";
 
 import { mockAuthUser, stubAuthenticatedFetch } from "./auth-fixtures";
+import { stubBikesFetch } from "./bike-fixtures";
 import { appRoutes } from "./routes-config";
 import { renderWithRouter } from "./test-utils";
 
@@ -235,5 +236,35 @@ describe("routes", () => {
     await waitFor(() => {
       expect(screen.getByText("Trustee")).toBeInTheDocument();
     });
+  });
+
+  it("renders the bikes fleet page for trustees", async () => {
+    renderWithRouter(appRoutes, "/bikes", {
+      authenticated: true,
+      user: { ...mockAuthUser, roles: [Role.Trustee] },
+      fetchStub: stubBikesFetch({ ...mockAuthUser, roles: [Role.Trustee] }),
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Bikes" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("CF12 ABC")).toBeInTheDocument();
+  });
+
+  it("does not show bikes in nav for controllers", async () => {
+    vi.stubGlobal("fetch", stubAuthenticatedFetch(mockAuthUser));
+
+    renderWithRouter(appRoutes, "/jobs", {
+      authenticated: true,
+      user: mockAuthUser,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Jobs" })).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole("link", { name: "Bikes" }),
+    ).not.toBeInTheDocument();
   });
 });

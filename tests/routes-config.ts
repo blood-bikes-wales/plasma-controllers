@@ -1,6 +1,9 @@
 import type { RouteObject } from "react-router";
 
 import Index from "~/routes/_index";
+import BikesPage from "~/routes/bikes";
+import BikesEditRoute from "~/routes/bikes.$bikeId";
+import BikesNewRoute from "~/routes/bikes-new";
 import DashboardPage from "~/routes/dashboard";
 import DashboardLayout from "~/routes/dashboard-layout";
 import DirectoryPage from "~/routes/directory";
@@ -28,6 +31,14 @@ export const appRoutes: RouteObject[] = [
           { path: "dashboard", Component: DashboardPage },
           { path: "shifts", Component: ShiftsPage },
           { path: "directory", Component: DirectoryPage },
+          {
+            path: "bikes",
+            Component: BikesPage,
+            children: [
+              { path: "new", Component: BikesNewRoute },
+              { path: ":bikeId", Component: BikesEditRoute },
+            ],
+          },
           {
             path: "jobs",
             Component: JobsPage,

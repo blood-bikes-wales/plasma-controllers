@@ -30,6 +30,12 @@ const API_FIELD_MAP: Record<string, string> = {
   "sender.organisation": "senderOrganisation",
   contents: "contents",
   serviceAreas: "serviceAreas",
+  registration: "registration",
+  area: "area",
+  lastRecordedMileage: "lastRecordedMileage",
+  last_recorded_mileage: "lastRecordedMileage",
+  purchasedAt: "purchasedAt",
+  purchased_at: "purchasedAt",
 };
 
 function formFieldForApiKey(key: string): string {

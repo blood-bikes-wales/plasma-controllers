@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   canAccessPath,
   canCreateJobs,
+  canManageBikes,
   hasPlasmaAccess,
   homePathForRole,
   navAreasForRole,
@@ -41,18 +42,40 @@ describe("needsRoleSelection", () => {
   });
 });
 
+describe("canManageBikes", () => {
+  it("allows admin and trustee only", () => {
+    expect(canManageBikes(Role.Admin)).toBe(true);
+    expect(canManageBikes(Role.Trustee)).toBe(true);
+    expect(canManageBikes(Role.Controller)).toBe(false);
+    expect(canManageBikes(Role.Rider)).toBe(false);
+    expect(canManageBikes(null)).toBe(false);
+  });
+});
+
 describe("navAreasForRole", () => {
-  it("returns jobs, shifts, and directory for every Plasma role", () => {
+  it("returns jobs, shifts, and directory for operational roles", () => {
     expect(navAreasForRole(Role.Rider).map((area) => area.to)).toEqual([
       "/jobs",
       "/shifts",
       "/directory",
     ]);
-    expect(navAreasForRole(Role.Admin).map((area) => area.label)).toEqual([
+    expect(navAreasForRole(Role.Controller).map((area) => area.label)).toEqual([
       "Jobs",
       "Shifts",
       "Directory",
     ]);
+  });
+
+  it("includes bikes for admin and trustee", () => {
+    expect(navAreasForRole(Role.Admin).map((area) => area.label)).toEqual([
+      "Jobs",
+      "Shifts",
+      "Directory",
+      "Bikes",
+    ]);
+    expect(navAreasForRole(Role.Trustee).map((area) => area.to)).toContain(
+      "/bikes",
+    );
   });
 
   it("returns no areas without an active role", () => {
@@ -72,6 +95,8 @@ describe("canAccessPath", () => {
     expect(canAccessPath(Role.Controller, "/jobs")).toBe(true);
     expect(canAccessPath(Role.Controller, "/jobs/new")).toBe(true);
     expect(canAccessPath(Role.Controller, "/directory")).toBe(true);
+    expect(canAccessPath(Role.Controller, "/bikes")).toBe(false);
+    expect(canAccessPath(Role.Trustee, "/bikes")).toBe(true);
     expect(canAccessPath(Role.Controller, "/dashboard")).toBe(true);
     expect(canAccessPath(Role.Controller, "/select-role")).toBe(true);
   });

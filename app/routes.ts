@@ -15,6 +15,10 @@ export default [
       route("dashboard", "routes/dashboard.tsx"),
       route("shifts", "routes/shifts.tsx"),
       route("directory", "routes/directory.tsx"),
+      route("bikes", "routes/bikes.tsx", [
+        route("new", "routes/bikes-new.tsx"),
+        route(":bikeId", "routes/bikes.$bikeId.tsx"),
+      ]),
       route("jobs", "routes/jobs.tsx", [
         route("new", "routes/jobs-new.tsx", [
           route("assign", "routes/jobs-new-assign.tsx"),
