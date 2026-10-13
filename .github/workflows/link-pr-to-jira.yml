@@ -28,7 +28,22 @@ jobs:
         run: |
           set -euo pipefail
 
-          JIRA_KEY="$(printf "%s" "$PR_TITLE" | sed -nE 's/^\[([A-Z][A-Z0-9]+-[0-9]+)\][[:space:]]*-[[:space:]]*.+/\1/p')"
+          JIRA_BASE_URL="${JIRA_BASE_URL%/}"
+
+          extract_jira_key() {
+            local text="$1"
+            local key
+            key="$(printf '%s' "$text" | grep -oE '\[[A-Z][A-Z0-9]+-[0-9]+\]' | head -n1 | tr -d '[]' || true)"
+            if [ -z "$key" ]; then
+              key="$(printf '%s' "$text" | grep -oE '[A-Z][A-Z0-9]+-[0-9]+' | head -n1 || true)"
+            fi
+            printf '%s' "$key"
+          }
+
+          JIRA_KEY="$(extract_jira_key "$PR_TITLE")"
+          if [ -z "$JIRA_KEY" ]; then
+            JIRA_KEY="$(extract_jira_key "$PR_BRANCH")"
+          fi
 
           if [ -z "$JIRA_KEY" ]; then
             echo "No Jira key found in PR title or branch."
@@ -44,7 +59,7 @@ jobs:
       - name: Link PR on Jira issue
         if: steps.jira.outputs.found == 'true'
         env:
-          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_CLOUD_ID: ${{ secrets.JIRA_CLOUD_ID }}
           JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
           JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
           JIRA_KEY: ${{ steps.jira.outputs.key }}
@@ -55,6 +70,14 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [ -z "${JIRA_CLOUD_ID:-}" ]; then
+            echo "Missing secret JIRA_CLOUD_ID (Atlassian site cloud ID)."
+            exit 1
+          fi
+
+          # Scoped API tokens must use api.atlassian.com with the site cloud ID:
+          # https://developer.atlassian.com/cloud/confluence/oauth-2-3lo-apps/#3-2-construct-the-request-url
+          JIRA_API_BASE="https://api.atlassian.com/ex/jira/${JIRA_CLOUD_ID}"
           AUTH="$(printf "%s:%s" "$JIRA_EMAIL" "$JIRA_API_TOKEN" | base64 | tr -d '\n')"
 
           jq -n \
@@ -82,7 +105,7 @@ jobs:
             -H "Accept: application/json" \
             -H "Content-Type: application/json" \
             --data @jira-remote-link.json \
-            "${JIRA_BASE_URL}/rest/api/3/issue/${JIRA_KEY}/remotelink"
+            "${JIRA_API_BASE}/rest/api/3/issue/${JIRA_KEY}/remotelink"
 
       - name: Add or update PR comment with Jira link
         if: steps.jira.outputs.found == 'true'
@@ -96,9 +119,7 @@ jobs:
           set -euo pipefail
 
           MARKER="<!-- jira-link:${JIRA_KEY} -->"
-          COMMENT_BODY="Linked Jira ticket: [${JIRA_KEY}](${JIRA_URL})
-
-          ${MARKER}"
+          COMMENT_BODY="$(printf 'Linked Jira ticket: [%s](%s)\n\n%s\n' "$JIRA_KEY" "$JIRA_URL" "$MARKER")"
 
           COMMENTS_JSON="$(curl --fail-with-body -L \
             -H "Accept: application/vnd.github+json" \
