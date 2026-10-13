@@ -22,7 +22,7 @@ import {
   statusLabel,
 } from "~/lib/bikes";
 import { canManageBikes } from "~/lib/capabilities";
-import { SERVICE_AREAS } from "~/lib/jobs";
+import { fetchServiceAreas, type ServiceAreaOption } from "~/lib/service-areas";
 import { cn } from "~/lib/utils";
 
 import type { Route } from "./+types/bikes";
@@ -57,6 +57,7 @@ function filterTabClass(isActive: boolean) {
 
 function BikeCard({
   bike,
+  serviceAreas,
   confirmingRetire,
   onConfirmRetire,
   onCancelRetire,
@@ -65,6 +66,7 @@ function BikeCard({
   retiring,
 }: {
   bike: FleetBike;
+  serviceAreas: ServiceAreaOption[];
   confirmingRetire: boolean;
   onConfirmRetire: () => void;
   onCancelRetire: () => void;
@@ -83,7 +85,7 @@ function BikeCard({
               {bike.registration}
             </h2>
             <p className="mt-1 text-sm text-bb-gray-500 dark:text-bb-gray-400">
-              {areaLabel(bike.area)} ·{" "}
+              {areaLabel(bike.area, serviceAreas)} ·{" "}
               {bike.lastRecordedMileage.toLocaleString()} miles
             </p>
           </div>
@@ -154,12 +156,32 @@ export default function BikesPage() {
   const canManage = canManageBikes(activeRole);
 
   const [bikes, setBikes] = useState<FleetBike[]>([]);
+  const [serviceAreas, setServiceAreas] = useState<ServiceAreaOption[]>([]);
   const [areaFilter, setAreaFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmRetireId, setConfirmRetireId] = useState<string | null>(null);
   const [retiringId, setRetiringId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchServiceAreas()
+      .then((areas) => {
+        if (!cancelled) {
+          setServiceAreas(areas);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError("Unable to load service areas.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isNewOpen = location.pathname === "/bikes/new";
   const editingBikeId = params.bikeId;
@@ -301,9 +323,9 @@ export default function BikesPage() {
             onChange={(event) => setAreaFilter(event.target.value)}
           >
             <option value="">All areas</option>
-            {SERVICE_AREAS.map((area) => (
-              <option key={area.value} value={area.value}>
-                {area.label}
+            {serviceAreas.map((area) => (
+              <option key={area.code} value={area.code}>
+                {area.name}
               </option>
             ))}
           </select>
@@ -332,6 +354,7 @@ export default function BikesPage() {
             <BikeCard
               key={bike.id}
               bike={bike}
+              serviceAreas={serviceAreas}
               confirmingRetire={confirmRetireId === bike.id}
               retiring={retiringId === bike.id}
               onEdit={() => navigate(`/bikes/${bike.id}`)}
@@ -348,6 +371,7 @@ export default function BikesPage() {
       <BikeFormDrawer
         mode="create"
         open={isNewOpen}
+        serviceAreas={serviceAreas}
         onOpenChange={(open) => {
           if (!open) {
             navigate("/bikes");
@@ -360,6 +384,7 @@ export default function BikesPage() {
         mode="edit"
         open={isEditOpen}
         bike={editingBike}
+        serviceAreas={serviceAreas}
         onOpenChange={(open) => {
           if (!open) {
             navigate("/bikes");

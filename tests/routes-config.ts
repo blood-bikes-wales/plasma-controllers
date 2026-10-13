@@ -13,6 +13,7 @@ import JobsNewRoute from "~/routes/jobs-new";
 import JobsNewAssignRoute from "~/routes/jobs-new-assign";
 import LoginPage from "~/routes/login";
 import NoAccessPage from "~/routes/no-access";
+import OperationsPostcodeAreasPage from "~/routes/operations.postcode-areas";
 import ProtectedLayout from "~/routes/protected-layout";
 import SelectRolePage from "~/routes/select-role";
 import ShiftsPage from "~/routes/shifts";
@@ -38,6 +39,10 @@ export const appRoutes: RouteObject[] = [
               { path: "new", Component: BikesNewRoute },
               { path: ":bikeId", Component: BikesEditRoute },
             ],
+          },
+          {
+            path: "operations/postcode-areas",
+            Component: OperationsPostcodeAreasPage,
           },
           {
             path: "jobs",

@@ -13,9 +13,7 @@ describe("AssignRiderDrawer", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("JB-1043")).toBeInTheDocument();
     expect(screen.getByText("Available riders")).toBeInTheDocument();
-    expect(
-      screen.getByText("Showing riders in South Area"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Showing riders in East")).toBeInTheDocument();
   });
 
   it("lists area riders with status and call actions", () => {

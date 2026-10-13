@@ -56,7 +56,7 @@ function job(
     collection: GLAMORGAN,
     delivery: UHW,
     contents: "Blood samples",
-    serviceAreas: ["South"],
+    serviceAreas: ["E"],
     createdAt: "2026-08-29T10:00:00.000Z",
     allowedActions: ["allocate", "cancel", "relay"],
     ...overrides,

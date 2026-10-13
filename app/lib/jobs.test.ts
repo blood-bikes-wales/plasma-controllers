@@ -35,7 +35,7 @@ const CREATED_JOB = {
   collection: COLLECTION,
   delivery: DELIVERY,
   contents: "Blood samples",
-  serviceAreas: ["South"],
+  serviceAreas: ["E"],
   createdAt: "2026-08-29T20:00:00.000000Z",
 };
 
@@ -67,7 +67,7 @@ describe("createDeliveryJob", () => {
       collection: COLLECTION,
       delivery: DELIVERY,
       contents: "Blood samples",
-      serviceAreas: ["South"],
+      serviceAreas: ["E"],
     };
 
     await expect(createDeliveryJob(payload)).resolves.toEqual(CREATED_JOB);

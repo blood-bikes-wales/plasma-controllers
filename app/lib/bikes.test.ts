@@ -6,7 +6,7 @@ describe("createBikeFormSchema", () => {
   it("accepts valid create input", () => {
     const result = createBikeFormSchema.safeParse({
       registration: "CF12 ABC",
-      area: "South",
+      area: "E",
       lastRecordedMileage: "12000",
       purchasedAt: "2024-03-15",
     });
@@ -23,7 +23,7 @@ describe("createBikeFormSchema", () => {
   it("rejects missing required fields", () => {
     const result = createBikeFormSchema.safeParse({
       registration: "",
-      area: "South",
+      area: "E",
       lastRecordedMileage: "",
     });
 
@@ -45,7 +45,7 @@ describe("updateBikeFormSchema", () => {
   it("accepts valid update input", () => {
     const result = updateBikeFormSchema.safeParse({
       registration: "CF34 DEF",
-      area: "North",
+      area: "NW",
       purchasedAt: "",
     });
 

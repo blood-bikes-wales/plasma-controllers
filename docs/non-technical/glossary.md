@@ -20,7 +20,7 @@ Terms used when talking about Plasma Controller and Blood Bikes Wales operations
 | Shift | A period when a rider is logged on duty with a specific bike and start mileage |
 | Logon / logoff | Starting or ending a rider’s on-duty shift |
 | Directory | Search tool for volunteers and charity bikes (registration, mileage history) |
-| Service area | Geographic region for a job: South Area or North Area |
+| Service area | Charity-defined geographic group for a job (e.g. East, North West, Carms) |
 | Pickup | Where the rider collects from (usually a hospital, sometimes a ward/department) |
 | Delivery | Where the rider takes the items |
 | Sender | Person at the hospital who requested the courier (name, phone, organisation) |

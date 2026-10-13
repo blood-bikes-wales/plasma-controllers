@@ -4,6 +4,7 @@ import {
   canAccessPath,
   canCreateJobs,
   canManageBikes,
+  canManagePostcodeAreas,
   hasPlasmaAccess,
   homePathForRole,
   navAreasForRole,
@@ -52,6 +53,15 @@ describe("canManageBikes", () => {
   });
 });
 
+describe("canManagePostcodeAreas", () => {
+  it("allows admin and trustee only", () => {
+    expect(canManagePostcodeAreas(Role.Admin)).toBe(true);
+    expect(canManagePostcodeAreas(Role.Trustee)).toBe(true);
+    expect(canManagePostcodeAreas(Role.Controller)).toBe(false);
+    expect(canManagePostcodeAreas(null)).toBe(false);
+  });
+});
+
 describe("navAreasForRole", () => {
   it("returns jobs, shifts, and directory for operational roles", () => {
     expect(navAreasForRole(Role.Rider).map((area) => area.to)).toEqual([
@@ -66,15 +76,19 @@ describe("navAreasForRole", () => {
     ]);
   });
 
-  it("includes bikes for admin and trustee", () => {
+  it("includes bikes and operations for admin and trustee", () => {
     expect(navAreasForRole(Role.Admin).map((area) => area.label)).toEqual([
       "Jobs",
       "Shifts",
       "Directory",
       "Bikes",
+      "Operations",
     ]);
     expect(navAreasForRole(Role.Trustee).map((area) => area.to)).toContain(
       "/bikes",
+    );
+    expect(navAreasForRole(Role.Trustee).map((area) => area.to)).toContain(
+      "/operations/postcode-areas",
     );
   });
 
@@ -97,6 +111,12 @@ describe("canAccessPath", () => {
     expect(canAccessPath(Role.Controller, "/directory")).toBe(true);
     expect(canAccessPath(Role.Controller, "/bikes")).toBe(false);
     expect(canAccessPath(Role.Trustee, "/bikes")).toBe(true);
+    expect(canAccessPath(Role.Controller, "/operations/postcode-areas")).toBe(
+      false,
+    );
+    expect(canAccessPath(Role.Trustee, "/operations/postcode-areas")).toBe(
+      true,
+    );
     expect(canAccessPath(Role.Controller, "/dashboard")).toBe(true);
     expect(canAccessPath(Role.Controller, "/select-role")).toBe(true);
   });

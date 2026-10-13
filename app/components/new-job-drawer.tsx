@@ -22,10 +22,10 @@ import {
   type DeliveryJob,
   jobErrorMessage,
   type PlaceLocation,
-  SERVICE_AREAS,
 } from "~/lib/jobs";
 import type { PlacesLookup } from "~/lib/places";
 import { recordUsedLocations } from "~/lib/saved-locations";
+import { fetchServiceAreas, type ServiceAreaOption } from "~/lib/service-areas";
 import { apiFieldErrors, fieldErrors } from "~/lib/validation";
 
 const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
@@ -71,6 +71,7 @@ type NewJobDrawerProps = {
   onCreated?: (job: DeliveryJob) => void;
   placesLookup?: PlacesLookup;
   createJob?: (payload: CreateJobPayload) => Promise<DeliveryJob>;
+  serviceAreas?: ServiceAreaOption[];
 };
 
 function FormSection({
@@ -142,11 +143,16 @@ export function NewJobDrawer({
   onCreated,
   placesLookup,
   createJob = createDeliveryJob,
+  serviceAreas: serviceAreasProp,
 }: NewJobDrawerProps) {
   const [form, setForm] = useState<NewJobFormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
+  const [serviceAreas, setServiceAreas] = useState<ServiceAreaOption[]>(
+    serviceAreasProp ?? [],
+  );
+  const [areasError, setAreasError] = useState<string | undefined>();
 
   useEffect(() => {
     if (!open) {
@@ -154,8 +160,37 @@ export function NewJobDrawer({
       setErrors({});
       setFormError(undefined);
       setSubmitting(false);
+      setAreasError(undefined);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (serviceAreasProp) {
+      setServiceAreas(serviceAreasProp);
+      return;
+    }
+
+    if (!open) {
+      return;
+    }
+
+    let cancelled = false;
+    void fetchServiceAreas()
+      .then((areas) => {
+        if (!cancelled) {
+          setServiceAreas(areas);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAreasError("Unable to load service areas.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, serviceAreasProp]);
 
   function updateField<K extends keyof NewJobFormState>(
     field: K,
@@ -363,22 +398,22 @@ export function NewJobDrawer({
                 <legend className="text-sm font-medium text-bb-gray-700 dark:text-bb-gray-300">
                   Areas this job covers
                 </legend>
-                {SERVICE_AREAS.map((area) => (
+                {serviceAreas.map((area) => (
                   <label
-                    key={area.value}
+                    key={area.code}
                     className="flex min-h-11 items-center gap-3 rounded-xl px-1 text-base font-medium text-bb-gray-900 dark:text-bb-gray-100"
                   >
                     <input
                       type="checkbox"
                       className="size-5 shrink-0 rounded border-bb-gray-300 accent-bb-cta"
-                      checked={form.serviceAreas.includes(area.value)}
-                      onChange={() => toggleServiceArea(area.value)}
+                      checked={form.serviceAreas.includes(area.code)}
+                      onChange={() => toggleServiceArea(area.code)}
                     />
-                    {area.label}
+                    {area.name}
                   </label>
                 ))}
               </fieldset>
-              <FieldError message={errors.serviceAreas} />
+              <FieldError message={errors.serviceAreas ?? areasError} />
             </FormSection>
 
             {formError ? (
