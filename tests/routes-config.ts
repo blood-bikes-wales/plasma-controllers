@@ -13,7 +13,10 @@ import JobsNewRoute from "~/routes/jobs-new";
 import JobsNewAssignRoute from "~/routes/jobs-new-assign";
 import LoginPage from "~/routes/login";
 import NoAccessPage from "~/routes/no-access";
+import OperationsLayout from "~/routes/operations";
+import OperationsIndex from "~/routes/operations._index";
 import OperationsPostcodeAreasPage from "~/routes/operations.postcode-areas";
+import OperationsSection172Page from "~/routes/operations.section-172";
 import ProtectedLayout from "~/routes/protected-layout";
 import SelectRolePage from "~/routes/select-role";
 import ShiftsPage from "~/routes/shifts";
@@ -41,8 +44,16 @@ export const appRoutes: RouteObject[] = [
             ],
           },
           {
-            path: "operations/postcode-areas",
-            Component: OperationsPostcodeAreasPage,
+            path: "operations",
+            Component: OperationsLayout,
+            children: [
+              { index: true, Component: OperationsIndex },
+              {
+                path: "postcode-areas",
+                Component: OperationsPostcodeAreasPage,
+              },
+              { path: "section-172", Component: OperationsSection172Page },
+            ],
           },
           {
             path: "jobs",

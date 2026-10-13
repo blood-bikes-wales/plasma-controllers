@@ -28,7 +28,7 @@ export const NAV_AREAS: readonly NavArea[] = [
   { to: "/directory", label: "Directory", roles: ALL_ROLES },
   { to: "/bikes", label: "Bikes", roles: MANAGE_BIKE_ROLES },
   {
-    to: "/operations/postcode-areas",
+    to: "/operations",
     label: "Operations",
     roles: MANAGE_OPERATIONS_ROLES,
   },

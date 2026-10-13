@@ -227,14 +227,14 @@ export default function OperationsPostcodeAreasPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="space-y-4 px-5 pb-5 pt-6">
+      <div className="space-y-4 px-5 pb-5 pt-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
               <MapPinned className="size-6 text-bb-cta dark:text-primary" />
-              <h1 className="text-2xl font-extrabold text-bb-gray-900 dark:text-bb-gray-100">
+              <h2 className="text-xl font-bold text-bb-gray-900 dark:text-bb-gray-100">
                 Postcode areas
-              </h1>
+              </h2>
             </div>
             <p className="mt-1 text-sm text-bb-gray-500 dark:text-bb-gray-400">
               Map UK outward postcodes to charity service areas.

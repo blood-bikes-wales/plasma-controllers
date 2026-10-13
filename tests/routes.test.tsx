@@ -270,4 +270,39 @@ describe("routes", () => {
       screen.queryByRole("link", { name: "Operations" }),
     ).not.toBeInTheDocument();
   });
+
+  it("redirects controllers away from operations", async () => {
+    vi.stubGlobal("fetch", stubAuthenticatedFetch(mockAuthUser));
+
+    const { router } = renderWithRouter(appRoutes, "/operations", {
+      authenticated: true,
+      user: mockAuthUser,
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/jobs");
+    });
+  });
+
+  it("shows operations sub-nav for trustees", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubAuthenticatedFetch({ ...mockAuthUser, roles: [Role.Trustee] }),
+    );
+
+    renderWithRouter(appRoutes, "/operations/section-172", {
+      authenticated: true,
+      user: { ...mockAuthUser, roles: [Role.Trustee] },
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Operations" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Postcode areas" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Section 172" }),
+    ).toBeInTheDocument();
+  });
 });
