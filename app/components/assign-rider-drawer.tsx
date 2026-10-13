@@ -47,7 +47,7 @@ const DEFAULT_JOB_SUMMARY: AssignJobSummary = {
   pickup: "Royal Glamorgan Hospital",
   delivery: "University Hospital of Wales",
   urgent: true,
-  area: "South Area",
+  area: "East",
 };
 
 const MOCK_RIDERS: Rider[] = [
@@ -59,7 +59,7 @@ const MOCK_RIDERS: Rider[] = [
     distance: "2.4 mi",
     activeJobs: 0,
     phone: "07700900101",
-    area: "South Area",
+    area: "East",
   },
   {
     id: "r2",
@@ -69,7 +69,7 @@ const MOCK_RIDERS: Rider[] = [
     distance: "5.1 mi",
     activeJobs: 1,
     phone: "07700900102",
-    area: "South Area",
+    area: "East",
   },
   {
     id: "r3",
@@ -79,7 +79,7 @@ const MOCK_RIDERS: Rider[] = [
     distance: "8.3 mi",
     activeJobs: 2,
     phone: "07700900103",
-    area: "South Area",
+    area: "East",
   },
   {
     id: "r4",
@@ -89,7 +89,7 @@ const MOCK_RIDERS: Rider[] = [
     distance: "—",
     activeJobs: 0,
     phone: "07700900104",
-    area: "South Area",
+    area: "East",
   },
   {
     id: "r5",
@@ -99,7 +99,7 @@ const MOCK_RIDERS: Rider[] = [
     distance: "6.7 mi",
     activeJobs: 1,
     phone: "07700900105",
-    area: "South Area",
+    area: "East",
   },
   {
     id: "r6",
@@ -109,7 +109,7 @@ const MOCK_RIDERS: Rider[] = [
     distance: "12.0 mi",
     activeJobs: 0,
     phone: "07700900106",
-    area: "North Area",
+    area: "North West",
   },
 ];
 

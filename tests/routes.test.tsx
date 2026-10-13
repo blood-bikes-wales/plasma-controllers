@@ -251,7 +251,7 @@ describe("routes", () => {
     expect(await screen.findByText("CF12 ABC")).toBeInTheDocument();
   });
 
-  it("does not show bikes in nav for controllers", async () => {
+  it("does not show bikes or operations in nav for controllers", async () => {
     vi.stubGlobal("fetch", stubAuthenticatedFetch(mockAuthUser));
 
     renderWithRouter(appRoutes, "/jobs", {
@@ -265,6 +265,9 @@ describe("routes", () => {
 
     expect(
       screen.queryByRole("link", { name: "Bikes" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Operations" }),
     ).not.toBeInTheDocument();
   });
 });

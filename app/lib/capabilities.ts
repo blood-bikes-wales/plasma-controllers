@@ -15,6 +15,7 @@ const ALL_ROLES: readonly Role[] = [
 ];
 
 const MANAGE_BIKE_ROLES: readonly Role[] = [Role.Admin, Role.Trustee];
+const MANAGE_OPERATIONS_ROLES: readonly Role[] = [Role.Admin, Role.Trustee];
 
 /**
  * Primary nav areas and which roles may see them.
@@ -26,6 +27,11 @@ export const NAV_AREAS: readonly NavArea[] = [
   { to: "/shifts", label: "Shifts", roles: ALL_ROLES },
   { to: "/directory", label: "Directory", roles: ALL_ROLES },
   { to: "/bikes", label: "Bikes", roles: MANAGE_BIKE_ROLES },
+  {
+    to: "/operations/postcode-areas",
+    label: "Operations",
+    roles: MANAGE_OPERATIONS_ROLES,
+  },
 ];
 
 const CREATE_JOB_ROLES: readonly Role[] = [Role.Admin, Role.Controller];
@@ -36,6 +42,14 @@ export function canManageBikes(role: Role | null): boolean {
   }
 
   return MANAGE_BIKE_ROLES.includes(role);
+}
+
+export function canManagePostcodeAreas(role: Role | null): boolean {
+  if (!role) {
+    return false;
+  }
+
+  return MANAGE_OPERATIONS_ROLES.includes(role);
 }
 
 export function canManageJobs(role: Role | null): boolean {

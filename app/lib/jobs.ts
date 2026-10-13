@@ -107,11 +107,6 @@ export type DeliveryJob = {
 
 type DataList<T> = { data: T[] };
 
-export const SERVICE_AREAS = [
-  { value: "South", label: "South Area" },
-  { value: "North", label: "North Area" },
-] as const;
-
 export async function createDeliveryJob(
   payload: CreateJobPayload,
 ): Promise<DeliveryJob> {

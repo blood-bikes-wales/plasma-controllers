@@ -5,12 +5,13 @@ import type { FleetBike } from "~/lib/bikes";
 import { Role } from "~/lib/roles";
 
 import { mockAuthUser } from "./auth-fixtures";
+import { mockServiceAreas } from "./service-area-fixtures";
 
 export const mockFleetBikes: FleetBike[] = [
   {
     id: "11111111-1111-1111-1111-111111111111",
     registration: "CF12 ABC",
-    area: "South",
+    area: "E",
     status: "active",
     lastRecordedMileage: 15234,
     purchasedAt: "2024-03-15",
@@ -18,7 +19,7 @@ export const mockFleetBikes: FleetBike[] = [
   {
     id: "22222222-2222-2222-2222-222222222222",
     registration: "CF34 DEF",
-    area: "North",
+    area: "NW",
     status: "retired",
     lastRecordedMileage: 9820,
     retiredAt: "2026-08-01T12:00:00.000Z",
@@ -67,6 +68,10 @@ export function stubBikesFetch(
       return jsonResponse(user);
     }
 
+    if (url.includes("/service-areas") && method === "GET") {
+      return jsonResponse({ data: mockServiceAreas });
+    }
+
     if (url.includes("/bikes") && method === "GET") {
       return jsonResponse({ data: filterManagedBikes(url) });
     }
@@ -102,7 +107,7 @@ export function stubBikesFetch(
       const created: FleetBike = {
         id: "33333333-3333-3333-3333-333333333333",
         registration: body.registration ?? "NEW BIKE",
-        area: body.area ?? "South",
+        area: body.area ?? "E",
         status: "active",
         lastRecordedMileage: body.lastRecordedMileage ?? 0,
         purchasedAt: body.purchasedAt,

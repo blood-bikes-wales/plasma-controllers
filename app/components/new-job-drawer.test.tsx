@@ -5,6 +5,7 @@ import { ApiError } from "~/lib/api-client";
 import type { CreateJobPayload, DeliveryJob, PlaceLocation } from "~/lib/jobs";
 import type { PlacesLookup } from "~/lib/places";
 import { clearSavedLocations, recentLocations } from "~/lib/saved-locations";
+import { mockServiceAreas } from "../../tests/service-area-fixtures";
 import { NewJobDrawer } from "./new-job-drawer";
 
 const COLLECTION: PlaceLocation = {
@@ -33,7 +34,7 @@ const CREATED_JOB: DeliveryJob = {
   collection: COLLECTION,
   delivery: DELIVERY,
   contents: "Blood samples",
-  serviceAreas: ["South"],
+  serviceAreas: ["E"],
   createdAt: "2026-08-29T20:00:00.000000Z",
 };
 
@@ -81,7 +82,7 @@ async function fillRequiredFields(user: ReturnType<typeof userEvent.setup>) {
     screen.getByLabelText("Item or contents description"),
     "Blood samples",
   );
-  await user.click(screen.getByRole("checkbox", { name: "South Area" }));
+  await user.click(screen.getByRole("checkbox", { name: "East" }));
 }
 
 afterEach(() => {
@@ -91,7 +92,8 @@ afterEach(() => {
 describe("NewJobDrawer", () => {
   it("renders the intake form when open", () => {
     render(
-      <NewJobDrawer open onOpenChange={() => {}} placesLookup={stubLookup()} />,
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas} open onOpenChange={() => {}} placesLookup={stubLookup()} />,
     );
 
     expect(
@@ -106,16 +108,17 @@ describe("NewJobDrawer", () => {
       screen.getByLabelText("Item or contents description"),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("checkbox", { name: "South Area" }),
+      screen.getByRole("checkbox", { name: "East" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("checkbox", { name: "North Area" }),
+      screen.getByRole("checkbox", { name: "North West" }),
     ).toBeInTheDocument();
   });
 
   it("renders footer actions", () => {
     render(
-      <NewJobDrawer open onOpenChange={() => {}} placesLookup={stubLookup()} />,
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas} open onOpenChange={() => {}} placesLookup={stubLookup()} />,
     );
 
     expect(
@@ -130,6 +133,7 @@ describe("NewJobDrawer", () => {
 
     render(
       <NewJobDrawer
+        serviceAreas={mockServiceAreas}
         open
         onOpenChange={onOpenChange}
         placesLookup={stubLookup()}
@@ -147,6 +151,7 @@ describe("NewJobDrawer", () => {
 
     const { rerender } = render(
       <NewJobDrawer
+        serviceAreas={mockServiceAreas}
         open
         onOpenChange={onOpenChange}
         placesLookup={stubLookup()}
@@ -156,6 +161,7 @@ describe("NewJobDrawer", () => {
     await user.type(screen.getByLabelText("Caller name"), "Dr. Smith");
     rerender(
       <NewJobDrawer
+        serviceAreas={mockServiceAreas}
         open={false}
         onOpenChange={onOpenChange}
         placesLookup={stubLookup()}
@@ -163,6 +169,7 @@ describe("NewJobDrawer", () => {
     );
     rerender(
       <NewJobDrawer
+        serviceAreas={mockServiceAreas}
         open
         onOpenChange={onOpenChange}
         placesLookup={stubLookup()}
@@ -175,6 +182,7 @@ describe("NewJobDrawer", () => {
   it("does not render content when closed", () => {
     render(
       <NewJobDrawer
+        serviceAreas={mockServiceAreas}
         open={false}
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -192,6 +200,7 @@ describe("NewJobDrawer", () => {
 
     render(
       <NewJobDrawer
+        serviceAreas={mockServiceAreas}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -226,7 +235,8 @@ describe("NewJobDrawer", () => {
     const user = userEvent.setup();
 
     render(
-      <NewJobDrawer open onOpenChange={() => {}} placesLookup={stubLookup()} />,
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas} open onOpenChange={() => {}} placesLookup={stubLookup()} />,
     );
 
     await user.click(screen.getByRole("button", { name: "Create job" }));
@@ -246,6 +256,7 @@ describe("NewJobDrawer", () => {
 
     render(
       <NewJobDrawer
+        serviceAreas={mockServiceAreas}
         open
         onOpenChange={() => {}}
         onCreated={onCreated}
@@ -267,7 +278,7 @@ describe("NewJobDrawer", () => {
         collection: COLLECTION,
         delivery: DELIVERY,
         contents: "Blood samples",
-        serviceAreas: ["South"],
+        serviceAreas: ["E"],
       });
     });
     expect(onCreated).toHaveBeenCalledWith(CREATED_JOB);
@@ -293,6 +304,7 @@ describe("NewJobDrawer", () => {
 
     render(
       <NewJobDrawer
+        serviceAreas={mockServiceAreas}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}

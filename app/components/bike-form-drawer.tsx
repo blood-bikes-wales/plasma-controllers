@@ -23,7 +23,7 @@ import {
   updateBike,
   updateBikeFormSchema,
 } from "~/lib/bikes";
-import { SERVICE_AREAS } from "~/lib/jobs";
+import type { ServiceAreaOption } from "~/lib/service-areas";
 import { apiFieldErrors, fieldErrors } from "~/lib/validation";
 
 type BikeFormMode = "create" | "edit";
@@ -32,6 +32,7 @@ type BikeFormDrawerProps = {
   mode: BikeFormMode;
   open: boolean;
   bike?: FleetBike | null;
+  serviceAreas: ServiceAreaOption[];
   onOpenChange: (open: boolean) => void;
   onSaved?: (bike: FleetBike) => void;
   createBikeFn?: (payload: CreateBikePayload) => Promise<FleetBike>;
@@ -44,25 +45,30 @@ type BikeFormDrawerProps = {
 type CreateFormState = z.input<typeof createBikeFormSchema>;
 type UpdateFormState = z.input<typeof updateBikeFormSchema>;
 
-const EMPTY_CREATE_FORM: CreateFormState = {
-  registration: "",
-  area: "South",
-  lastRecordedMileage: "",
-  purchasedAt: "",
-};
+function emptyCreateForm(defaultArea: string): CreateFormState {
+  return {
+    registration: "",
+    area: defaultArea,
+    lastRecordedMileage: "",
+    purchasedAt: "",
+  };
+}
 
-function emptyEditForm(bike: FleetBike | null | undefined): UpdateFormState {
+function emptyEditForm(
+  bike: FleetBike | null | undefined,
+  defaultArea: string,
+): UpdateFormState {
   if (!bike) {
     return {
       registration: "",
-      area: "South",
+      area: defaultArea,
       purchasedAt: "",
     };
   }
 
   return {
     registration: bike.registration,
-    area: bike.area as "South" | "North",
+    area: bike.area,
     purchasedAt: bike.purchasedAt ?? "",
   };
 }
@@ -91,15 +97,18 @@ export function BikeFormDrawer({
   mode,
   open,
   bike,
+  serviceAreas,
   onOpenChange,
   onSaved,
   createBikeFn = createBike,
   updateBikeFn = updateBike,
 }: BikeFormDrawerProps) {
-  const [createForm, setCreateForm] =
-    useState<CreateFormState>(EMPTY_CREATE_FORM);
-  const [editForm, setEditForm] = useState<UpdateFormState>(
-    emptyEditForm(bike),
+  const defaultArea = serviceAreas[0]?.code ?? "";
+  const [createForm, setCreateForm] = useState<CreateFormState>(() =>
+    emptyCreateForm(defaultArea),
+  );
+  const [editForm, setEditForm] = useState<UpdateFormState>(() =>
+    emptyEditForm(bike, defaultArea),
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -112,9 +121,9 @@ export function BikeFormDrawer({
 
     setErrors({});
     setFormError(null);
-    setCreateForm(EMPTY_CREATE_FORM);
-    setEditForm(emptyEditForm(bike));
-  }, [bike, open]);
+    setCreateForm(emptyCreateForm(defaultArea));
+    setEditForm(emptyEditForm(bike, defaultArea));
+  }, [bike, defaultArea, open]);
 
   function handleClose() {
     onOpenChange(false);
@@ -271,7 +280,7 @@ export function BikeFormDrawer({
                 className="h-11 w-full rounded-md border border-bb-gray-300 bg-bb-white px-3 text-base dark:border-bb-gray-600 dark:bg-input/30"
                 value={mode === "create" ? createForm.area : editForm.area}
                 onChange={(event) => {
-                  const value = event.target.value as "South" | "North";
+                  const value = event.target.value;
                   if (mode === "create") {
                     updateCreateField("area", value);
                     return;
@@ -281,9 +290,9 @@ export function BikeFormDrawer({
                 }}
                 aria-invalid={!!errors.area}
               >
-                {SERVICE_AREAS.map((area) => (
-                  <option key={area.value} value={area.value}>
-                    {area.label}
+                {serviceAreas.map((area) => (
+                  <option key={area.code} value={area.code}>
+                    {area.name}
                   </option>
                 ))}
               </select>

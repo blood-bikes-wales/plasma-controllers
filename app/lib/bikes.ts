@@ -1,9 +1,7 @@
 import { z } from "zod";
 
 import { apiFetch } from "~/lib/api-client";
-import { SERVICE_AREAS } from "~/lib/jobs";
-
-export const BIKE_SERVICE_AREA_VALUES = SERVICE_AREAS.map((area) => area.value);
+import { serviceAreaLabel } from "~/lib/service-areas";
 
 export type FleetBike = {
   id: string;
@@ -33,9 +31,7 @@ export type ManagedBikeFilters = {
   status?: "active" | "retired" | "all";
 };
 
-const serviceAreaSchema = z.enum(["South", "North"], {
-  message: "Choose an area",
-});
+const serviceAreaSchema = z.string().trim().min(1, "Choose an area");
 
 export const createBikeFormSchema = z.object({
   registration: z
@@ -175,13 +171,11 @@ export function bikeErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export function areaLabel(area: string): string {
-  const match = SERVICE_AREAS.find((candidate) => candidate.value === area);
-  if (match) {
-    return match.label;
-  }
-
-  return area;
+export function areaLabel(
+  area: string,
+  areas: Parameters<typeof serviceAreaLabel>[1] = [],
+): string {
+  return serviceAreaLabel(area, areas);
 }
 
 export function statusLabel(status: FleetBike["status"]): string {

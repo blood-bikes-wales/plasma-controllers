@@ -6,6 +6,7 @@ import { BikeFormDrawer } from "~/components/bike-form-drawer";
 import type { FleetBike } from "~/lib/bikes";
 
 import { mockFleetBikes } from "../../tests/bike-fixtures";
+import { mockServiceAreas } from "../../tests/service-area-fixtures";
 
 describe("BikeFormDrawer", () => {
   it("shows validation errors without calling the API", async () => {
@@ -16,6 +17,7 @@ describe("BikeFormDrawer", () => {
       <BikeFormDrawer
         mode="create"
         open
+        serviceAreas={mockServiceAreas}
         onOpenChange={() => undefined}
         createBikeFn={createBikeFn}
       />,
@@ -39,6 +41,7 @@ describe("BikeFormDrawer", () => {
       <BikeFormDrawer
         mode="create"
         open
+        serviceAreas={mockServiceAreas}
         onOpenChange={() => undefined}
         onSaved={onSaved}
         createBikeFn={createBikeFn}
@@ -52,7 +55,7 @@ describe("BikeFormDrawer", () => {
     await waitFor(() => {
       expect(createBikeFn).toHaveBeenCalledWith({
         registration: "CF12 ABC",
-        area: "South",
+        area: "E",
         lastRecordedMileage: 12000,
         purchasedAt: undefined,
       });

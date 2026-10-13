@@ -19,6 +19,10 @@ export default [
         route("new", "routes/bikes-new.tsx"),
         route(":bikeId", "routes/bikes.$bikeId.tsx"),
       ]),
+      route(
+        "operations/postcode-areas",
+        "routes/operations.postcode-areas.tsx",
+      ),
       route("jobs", "routes/jobs.tsx", [
         route("new", "routes/jobs-new.tsx", [
           route("assign", "routes/jobs-new-assign.tsx"),
