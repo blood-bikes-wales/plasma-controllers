@@ -9,9 +9,7 @@ import type { PostcodeAreaMapping } from "~/lib/postcode-areas";
 import { Role } from "~/lib/roles";
 
 import { mockAuthUser } from "../../tests/auth-fixtures";
-import OperationsPostcodeAreasPage, {
-  meta,
-} from "./operations.postcode-areas";
+import OperationsPostcodeAreasPage, { meta } from "./operations.postcode-areas";
 
 const mappings: PostcodeAreaMapping[] = [
   {

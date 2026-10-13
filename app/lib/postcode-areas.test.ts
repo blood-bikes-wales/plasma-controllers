@@ -67,9 +67,13 @@ describe("postcode-areas client", () => {
 
   it("imports a CSV file as multipart form data", async () => {
     vi.mocked(apiFetch).mockResolvedValue({ created: 1, updated: 2 });
-    const file = new File(["outboundPostcode,areaCode,areaFullName\nSA1,S,Swansea\n"], "mappings.csv", {
-      type: "text/csv",
-    });
+    const file = new File(
+      ["outboundPostcode,areaCode,areaFullName\nSA1,S,Swansea\n"],
+      "mappings.csv",
+      {
+        type: "text/csv",
+      },
+    );
 
     await expect(importPostcodeAreas(file)).resolves.toEqual({
       created: 1,

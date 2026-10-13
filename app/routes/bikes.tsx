@@ -22,10 +22,7 @@ import {
   statusLabel,
 } from "~/lib/bikes";
 import { canManageBikes } from "~/lib/capabilities";
-import {
-  fetchServiceAreas,
-  type ServiceAreaOption,
-} from "~/lib/service-areas";
+import { fetchServiceAreas, type ServiceAreaOption } from "~/lib/service-areas";
 import { cn } from "~/lib/utils";
 
 import type { Route } from "./+types/bikes";

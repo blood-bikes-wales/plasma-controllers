@@ -30,9 +30,7 @@ describe("fetchServiceAreas", () => {
 
 describe("serviceAreaLabel", () => {
   it("resolves a known code to its full name", () => {
-    expect(
-      serviceAreaLabel("E", [{ code: "E", name: "East" }]),
-    ).toBe("East");
+    expect(serviceAreaLabel("E", [{ code: "E", name: "East" }])).toBe("East");
   });
 
   it("falls back to the code when unknown", () => {

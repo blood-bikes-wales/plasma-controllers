@@ -158,9 +158,7 @@ export default function OperationsPostcodeAreasPage() {
 
       setDrawerOpen(false);
     } catch (caught: unknown) {
-      setFormError(
-        postcodeAreaErrorMessage(caught, "Unable to save mapping."),
-      );
+      setFormError(postcodeAreaErrorMessage(caught, "Unable to save mapping."));
     } finally {
       setSubmitting(false);
     }

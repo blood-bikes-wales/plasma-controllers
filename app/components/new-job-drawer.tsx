@@ -25,10 +25,7 @@ import {
 } from "~/lib/jobs";
 import type { PlacesLookup } from "~/lib/places";
 import { recordUsedLocations } from "~/lib/saved-locations";
-import {
-  fetchServiceAreas,
-  type ServiceAreaOption,
-} from "~/lib/service-areas";
+import { fetchServiceAreas, type ServiceAreaOption } from "~/lib/service-areas";
 import { apiFieldErrors, fieldErrors } from "~/lib/validation";
 
 const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({

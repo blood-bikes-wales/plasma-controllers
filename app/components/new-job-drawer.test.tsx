@@ -93,7 +93,11 @@ describe("NewJobDrawer", () => {
   it("renders the intake form when open", () => {
     render(
       <NewJobDrawer
-        serviceAreas={mockServiceAreas} open onOpenChange={() => {}} placesLookup={stubLookup()} />,
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
     );
 
     expect(
@@ -107,9 +111,7 @@ describe("NewJobDrawer", () => {
     expect(
       screen.getByLabelText("Item or contents description"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("checkbox", { name: "East" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "East" })).toBeInTheDocument();
     expect(
       screen.getByRole("checkbox", { name: "North West" }),
     ).toBeInTheDocument();
@@ -118,7 +120,11 @@ describe("NewJobDrawer", () => {
   it("renders footer actions", () => {
     render(
       <NewJobDrawer
-        serviceAreas={mockServiceAreas} open onOpenChange={() => {}} placesLookup={stubLookup()} />,
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
     );
 
     expect(
@@ -236,7 +242,11 @@ describe("NewJobDrawer", () => {
 
     render(
       <NewJobDrawer
-        serviceAreas={mockServiceAreas} open onOpenChange={() => {}} placesLookup={stubLookup()} />,
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
     );
 
     await user.click(screen.getByRole("button", { name: "Create job" }));
