@@ -5,6 +5,7 @@ import {
   canCreateJobs,
   canManageBikes,
   canManagePostcodeAreas,
+  childNavForPath,
   hasPlasmaAccess,
   homePathForRole,
   navAreasForRole,
@@ -88,7 +89,7 @@ describe("navAreasForRole", () => {
       "/bikes",
     );
     expect(navAreasForRole(Role.Trustee).map((area) => area.to)).toContain(
-      "/operations/postcode-areas",
+      "/operations",
     );
   });
 
@@ -104,6 +105,23 @@ describe("homePathForRole", () => {
   });
 });
 
+describe("childNavForPath", () => {
+  it("returns operations child links under /operations", () => {
+    expect(childNavForPath("/operations").map((item) => item.to)).toEqual([
+      "/operations/postcode-areas",
+      "/operations/section-172",
+    ]);
+    expect(childNavForPath("/operations/section-172")[0]?.label).toBe(
+      "Postcode areas",
+    );
+  });
+
+  it("returns no child nav outside operations", () => {
+    expect(childNavForPath("/jobs")).toEqual([]);
+    expect(childNavForPath("/bikes")).toEqual([]);
+  });
+});
+
 describe("canAccessPath", () => {
   it("allows jobs nested routes and dashboard for a role", () => {
     expect(canAccessPath(Role.Controller, "/jobs")).toBe(true);
@@ -111,12 +129,16 @@ describe("canAccessPath", () => {
     expect(canAccessPath(Role.Controller, "/directory")).toBe(true);
     expect(canAccessPath(Role.Controller, "/bikes")).toBe(false);
     expect(canAccessPath(Role.Trustee, "/bikes")).toBe(true);
+    expect(canAccessPath(Role.Controller, "/operations")).toBe(false);
     expect(canAccessPath(Role.Controller, "/operations/postcode-areas")).toBe(
       false,
     );
+    expect(canAccessPath(Role.Trustee, "/operations")).toBe(true);
     expect(canAccessPath(Role.Trustee, "/operations/postcode-areas")).toBe(
       true,
     );
+    expect(canAccessPath(Role.Trustee, "/operations/section-172")).toBe(true);
+    expect(canAccessPath(Role.Admin, "/operations/section-172")).toBe(true);
     expect(canAccessPath(Role.Controller, "/dashboard")).toBe(true);
     expect(canAccessPath(Role.Controller, "/select-role")).toBe(true);
   });
