@@ -5,6 +5,7 @@ import {
   canCreateJobs,
   canManageBikes,
   canManagePostcodeAreas,
+  childNavForPath,
   hasPlasmaAccess,
   homePathForRole,
   navAreasForRole,
@@ -101,6 +102,23 @@ describe("homePathForRole", () => {
   it("sends users with a role to jobs and others to no-access", () => {
     expect(homePathForRole(Role.Controller)).toBe("/jobs");
     expect(homePathForRole(null)).toBe("/no-access");
+  });
+});
+
+describe("childNavForPath", () => {
+  it("returns operations child links under /operations", () => {
+    expect(childNavForPath("/operations").map((item) => item.to)).toEqual([
+      "/operations/postcode-areas",
+      "/operations/section-172",
+    ]);
+    expect(childNavForPath("/operations/section-172")[0]?.label).toBe(
+      "Postcode areas",
+    );
+  });
+
+  it("returns no child nav outside operations", () => {
+    expect(childNavForPath("/jobs")).toEqual([]);
+    expect(childNavForPath("/bikes")).toEqual([]);
   });
 });
 

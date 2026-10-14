@@ -18,7 +18,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderLayout(roles: Role[] = [Role.Controller]) {
+function renderLayout({
+  roles = [Role.Controller],
+  path = "/",
+  children = [{ index: true, element: <div>Page</div> }],
+}: {
+  roles?: Role[];
+  path?: string;
+  children?: Parameters<typeof createMemoryRouter>[0][0]["children"];
+} = {}) {
   setAuthToken("test-token");
   vi.stubGlobal("fetch", stubAuthenticatedFetch({ ...mockAuthUser, roles }));
 
@@ -34,12 +42,12 @@ function renderLayout(roles: Role[] = [Role.Controller]) {
           {
             path: "/",
             Component: DashboardLayout,
-            children: [{ index: true, element: <div>Page</div> }],
+            children,
           },
         ],
       },
     ],
-    { initialEntries: ["/"] },
+    { initialEntries: [path] },
   );
 
   return render(<RouterProvider router={router} />);
@@ -61,6 +69,35 @@ describe("DashboardLayout", () => {
     expect(screen.getByRole("link", { name: "Shifts" })).toHaveAttribute(
       "href",
       "/shifts",
+    );
+    expect(
+      screen.queryByRole("navigation", { name: "Secondary" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows operations child nav in the header", async () => {
+    renderLayout({
+      roles: [Role.Trustee],
+      path: "/operations/postcode-areas",
+      children: [
+        {
+          path: "operations/postcode-areas",
+          element: <div>Postcode areas</div>,
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("navigation", { name: "Secondary" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("link", { name: "Postcode areas" }),
+    ).toHaveAttribute("href", "/operations/postcode-areas");
+    expect(screen.getByRole("link", { name: "Section 172" })).toHaveAttribute(
+      "href",
+      "/operations/section-172",
     );
   });
 });

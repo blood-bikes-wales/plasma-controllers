@@ -284,7 +284,7 @@ describe("routes", () => {
     });
   });
 
-  it("shows operations sub-nav for trustees", async () => {
+  it("shows operations child nav in the header for trustees", async () => {
     vi.stubGlobal(
       "fetch",
       stubAuthenticatedFetch({ ...mockAuthUser, roles: [Role.Trustee] }),
@@ -297,6 +297,9 @@ describe("routes", () => {
 
     expect(
       await screen.findByRole("heading", { name: "Operations" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("navigation", { name: "Secondary" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Postcode areas" }),

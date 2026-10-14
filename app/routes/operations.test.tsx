@@ -65,26 +65,16 @@ describe("OperationsLayout", () => {
     ]);
   });
 
-  it("shows operations sub-nav links", async () => {
+  it("renders the operations heading and child content", async () => {
     renderOperations("/operations/postcode-areas");
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Operations" }),
-      ).toBeInTheDocument();
-    });
-
     expect(
-      screen.getByRole("navigation", { name: "Operations" }),
+      await screen.findByRole("heading", { name: "Operations" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Postcode areas" }),
-    ).toHaveAttribute("href", "/operations/postcode-areas");
-    expect(screen.getByRole("link", { name: "Section 172" })).toHaveAttribute(
-      "href",
-      "/operations/section-172",
-    );
     expect(screen.getByText("Postcode areas content")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Secondary" }),
+    ).not.toBeInTheDocument();
   });
 
   it("redirects /operations to postcode areas", async () => {

@@ -6,6 +6,11 @@ export type NavArea = {
   roles: readonly Role[];
 };
 
+export type ChildNavItem = {
+  to: string;
+  label: string;
+};
+
 const ALL_ROLES: readonly Role[] = [
   Role.Admin,
   Role.Controller,
@@ -32,6 +37,12 @@ export const NAV_AREAS: readonly NavArea[] = [
     label: "Operations",
     roles: MANAGE_OPERATIONS_ROLES,
   },
+];
+
+/** Secondary header links shown while browsing an Operations screen. */
+export const OPERATIONS_CHILD_NAV: readonly ChildNavItem[] = [
+  { to: "/operations/postcode-areas", label: "Postcode areas" },
+  { to: "/operations/section-172", label: "Section 172" },
 ];
 
 const CREATE_JOB_ROLES: readonly Role[] = [Role.Admin, Role.Controller];
@@ -81,6 +92,14 @@ export function navAreasForRole(role: Role | null): NavArea[] {
   }
 
   return NAV_AREAS.filter((area) => area.roles.includes(role));
+}
+
+export function childNavForPath(pathname: string): readonly ChildNavItem[] {
+  if (pathname === "/operations" || pathname.startsWith("/operations/")) {
+    return OPERATIONS_CHILD_NAV;
+  }
+
+  return [];
 }
 
 export function homePathForRole(role: Role | null): string {
