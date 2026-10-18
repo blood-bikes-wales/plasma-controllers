@@ -85,14 +85,14 @@ describe("OperationsLayout", () => {
     });
   });
 
-  it("renders the section 172 placeholder", async () => {
+  it("renders the section 172 lookup form", async () => {
     renderOperations("/operations/section-172");
 
     expect(
       await screen.findByRole("heading", { name: "Section 172" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("This page is not set up yet."),
+      screen.getByRole("button", { name: "Find rider" }),
     ).toBeInTheDocument();
   });
 });
