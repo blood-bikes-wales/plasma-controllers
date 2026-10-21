@@ -371,7 +371,7 @@ export default function OperationsPostcodeAreasPage() {
 
       <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
         <SheetContent className="flex w-full max-w-full flex-col gap-0 p-0 sm:max-w-xl">
-          <SheetHeader className="border-b border-bb-gray-100 px-5 py-4 dark:border-bb-gray-700">
+          <SheetHeader className="border-b border-bb-gray-100 px-5 py-4 pr-12 dark:border-bb-gray-700">
             <SheetTitle>{drawerTitle}</SheetTitle>
             <SheetDescription>
               Outward codes are normalised (e.g. CF14). Area code and full name
@@ -384,7 +384,7 @@ export default function OperationsPostcodeAreasPage() {
               void handleSubmit(event);
             }}
           >
-            <div className="space-y-4 overflow-y-auto px-5 py-4">
+            <div className="space-y-4 overflow-y-auto scroll-pb-10 px-5 py-4 pb-10">
               <div className="space-y-2">
                 <Label htmlFor="mapping-postcode">Outbound postcode</Label>
                 <Input

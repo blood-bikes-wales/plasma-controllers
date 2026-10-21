@@ -12,6 +12,7 @@ function mockPlacesLibrary({
   status?: string;
   place?: {
     place_id: string;
+    name?: string;
     formatted_address: string;
     geometry: { location: { lat: () => number; lng: () => number } };
   } | null;
@@ -102,6 +103,27 @@ describe("placeDetails", () => {
       address: "Royal Glamorgan Hospital, Llantrisant",
       latitude: 51.568,
       longitude: -3.391,
+    });
+  });
+
+  it("prefixes the place name when it is missing from the street address", async () => {
+    mockPlacesLibrary({
+      place: {
+        place_id: "ChIJ-morriston",
+        name: "Morriston Hospital",
+        formatted_address: "Heol Maes Eglwys, Morriston, Swansea SA6 6NL, UK",
+        geometry: {
+          location: { lat: () => 51.684, lng: () => -3.938 },
+        },
+      },
+    });
+
+    await expect(placeDetails("ChIJ-morriston")).resolves.toEqual({
+      placeId: "ChIJ-morriston",
+      address:
+        "Morriston Hospital, Heol Maes Eglwys, Morriston, Swansea SA6 6NL, UK",
+      latitude: 51.684,
+      longitude: -3.938,
     });
   });
 });

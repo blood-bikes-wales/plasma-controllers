@@ -163,9 +163,27 @@ function readCoordinate(value: number | (() => number)): number {
   return value;
 }
 
+function displayAddress(place: PlaceResult): string | undefined {
+  const name = place.name?.trim();
+  const formatted = place.formatted_address?.trim();
+  if (!name) {
+    return formatted;
+  }
+
+  if (!formatted) {
+    return name;
+  }
+
+  if (formatted.toLowerCase().includes(name.toLowerCase())) {
+    return formatted;
+  }
+
+  return `${name}, ${formatted}`;
+}
+
 function locationFromPlace(place: PlaceResult | null): PlaceLocation {
   const geometry = place?.geometry?.location;
-  const address = place?.formatted_address ?? place?.name;
+  const address = place ? displayAddress(place) : undefined;
   if (!place?.place_id || !address || !geometry) {
     throw new Error("That place is missing map details. Choose another.");
   }

@@ -2,17 +2,11 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 
 import { FieldError } from "~/components/field-error";
+import { SearchableSelectField } from "~/components/searchable-select-field";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -156,7 +150,7 @@ export function LogonShiftDrawer({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className={SHEET_CONTENT_CLASS}>
-        <SheetHeader className="shrink-0 border-b border-bb-gray-100 px-5 py-4 text-left dark:border-bb-gray-700">
+        <SheetHeader className="shrink-0 border-b border-bb-gray-100 px-5 py-4 pr-12 text-left dark:border-bb-gray-700">
           <SheetTitle className="text-xl font-extrabold text-bb-gray-900 dark:text-bb-gray-100">
             Log on rider
           </SheetTitle>
@@ -167,66 +161,34 @@ export function LogonShiftDrawer({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-            <div className="space-y-2">
-              <Label
-                htmlFor="logon-rider"
-                className="text-bb-gray-700 dark:text-bb-gray-300"
-              >
-                Rider
-              </Label>
-              <Select value={riderId} onValueChange={setRiderId}>
-                <SelectTrigger
-                  id="logon-rider"
-                  aria-invalid={!!errors.riderId}
-                  className="h-11 w-full text-base dark:bg-input/30"
-                >
-                  <SelectValue placeholder="Search or select rider…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {riders.map((rider) => (
-                    <SelectItem key={rider.id} value={rider.id}>
-                      {rider.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {riders.length === 0 ? (
-                <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
-                  Every rider is already on shift.
-                </p>
-              ) : null}
-            </div>
+          <div className="flex-1 space-y-4 overflow-y-auto scroll-pb-10 px-5 py-5 pb-10">
+            <SearchableSelectField
+              id="logon-rider"
+              label="Rider"
+              value={riderId}
+              onChange={setRiderId}
+              options={riders.map((rider) => ({
+                value: rider.id,
+                label: rider.name,
+              }))}
+              placeholder="Search or select rider…"
+              error={errors.riderId}
+              emptyMessage="Every rider is already on shift."
+            />
 
-            <div className="space-y-2">
-              <Label
-                htmlFor="logon-bike"
-                className="text-bb-gray-700 dark:text-bb-gray-300"
-              >
-                Bike
-              </Label>
-              <Select value={bikeId} onValueChange={setBikeId}>
-                <SelectTrigger
-                  id="logon-bike"
-                  aria-invalid={!!errors.bikeId}
-                  className="h-11 w-full text-base dark:bg-input/30"
-                >
-                  <SelectValue placeholder="Search or select bike…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {bikes.map((bike) => (
-                    <SelectItem key={bike.id} value={bike.id}>
-                      {bike.registration}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {bikes.length === 0 ? (
-                <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
-                  Every bike is already on shift.
-                </p>
-              ) : null}
-            </div>
+            <SearchableSelectField
+              id="logon-bike"
+              label="Bike"
+              value={bikeId}
+              onChange={setBikeId}
+              options={bikes.map((bike) => ({
+                value: bike.id,
+                label: bike.registration,
+              }))}
+              placeholder="Search or select bike…"
+              error={errors.bikeId}
+              emptyMessage="Every bike is already on shift."
+            />
 
             <div className="space-y-2">
               <Label

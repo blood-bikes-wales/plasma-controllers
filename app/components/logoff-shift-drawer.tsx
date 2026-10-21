@@ -100,7 +100,7 @@ export function LogoffShiftDrawer({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className={SHEET_CONTENT_CLASS}>
-        <SheetHeader className="shrink-0 border-b border-bb-gray-100 px-5 py-4 text-left dark:border-bb-gray-700">
+        <SheetHeader className="shrink-0 border-b border-bb-gray-100 px-5 py-4 pr-12 text-left dark:border-bb-gray-700">
           <SheetTitle className="text-xl font-extrabold text-bb-gray-900 dark:text-bb-gray-100">
             Log off rider
           </SheetTitle>
@@ -112,7 +112,7 @@ export function LogoffShiftDrawer({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+          <div className="flex-1 space-y-4 overflow-y-auto scroll-pb-10 px-5 py-5 pb-10">
             <div className="space-y-1 text-sm text-bb-gray-500 dark:text-bb-gray-400">
               <p>
                 Started{" "}
