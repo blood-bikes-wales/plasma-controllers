@@ -26,7 +26,9 @@ describe("SearchableSelectField", () => {
     );
 
     await user.click(screen.getByRole("combobox", { name: "Rider" }));
-    expect(screen.getByRole("option", { name: "Sarah Jones" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Sarah Jones" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: "Emma Williams" }),
     ).toBeInTheDocument();

@@ -1,10 +1,4 @@
-import {
-  type KeyboardEvent,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
 import { FieldError } from "~/components/field-error";
 import { Button } from "~/components/ui/button";
@@ -170,7 +164,7 @@ export function PlaceLocationField({
     }
 
     listRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [showSuggestions, showSaved, suggestions.length]);
+  }, [showSuggestions, showSaved]);
 
   if (value) {
     return (

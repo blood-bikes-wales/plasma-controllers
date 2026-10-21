@@ -68,7 +68,7 @@ export function SearchableSelectField({
     }
 
     listRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [showSuggestions, filtered.length]);
+  }, [showSuggestions]);
 
   function selectOption(option: SearchableSelectOption) {
     onChange(option.value);
