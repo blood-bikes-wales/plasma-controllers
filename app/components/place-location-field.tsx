@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useId, useState } from "react";
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react";
 
 import { FieldError } from "~/components/field-error";
 import { Button } from "~/components/ui/button";
@@ -9,6 +9,15 @@ import { googlePlacesLookup, type PlacesLookup } from "~/lib/places";
 import { mostUsedLocations, recentLocations } from "~/lib/saved-locations";
 
 const SUGGEST_DEBOUNCE_MS = 250;
+
+const OPTION_BUTTON_CLASS =
+  "flex min-h-11 w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-bb-gray-900 hover:bg-bb-gray-50 dark:text-bb-gray-100 dark:hover:bg-muted/50";
+
+const SUGGESTION_PANEL_CLASS =
+  "space-y-1 rounded-xl border border-bb-gray-200 bg-bb-white p-1 dark:border-bb-gray-700 dark:bg-card";
+
+const SAVED_PANEL_CLASS =
+  "space-y-4 rounded-xl border border-bb-gray-200 bg-bb-white p-3 dark:border-bb-gray-700 dark:bg-card";
 
 type PlaceLocationFieldProps = {
   id: string;
@@ -42,7 +51,7 @@ function SavedLocationList({
           <li key={location.placeId}>
             <button
               type="button"
-              className="flex min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-bb-gray-900 hover:bg-bb-gray-50 dark:text-bb-gray-100 dark:hover:bg-muted/50"
+              className={OPTION_BUTTON_CLASS}
               onClick={() => onSelect(location)}
             >
               {location.address}
@@ -63,6 +72,7 @@ export function PlaceLocationField({
   lookup = googlePlacesLookup,
 }: PlaceLocationFieldProps) {
   const listboxId = useId();
+  const listRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [focused, setFocused] = useState(false);
   const [suggestions, setSuggestions] = useState<
@@ -108,7 +118,8 @@ export function PlaceLocationField({
     setSearchError(undefined);
     try {
       const location = await lookup.details(placeId);
-      onChange(location);
+      // Keep the autocomplete label so hospitals show their name, not only the street.
+      onChange({ ...location, address: description });
       setQuery("");
       setSuggestions([]);
     } catch (caught: unknown) {
@@ -147,6 +158,14 @@ export function PlaceLocationField({
   const showSuggestions = !value && suggestions.length > 0;
   const fieldError = error ?? searchError;
 
+  useEffect(() => {
+    if (!showSuggestions && !showSaved) {
+      return;
+    }
+
+    listRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [showSuggestions, showSaved]);
+
   if (value) {
     return (
       <div className="space-y-2">
@@ -159,7 +178,7 @@ export function PlaceLocationField({
             readOnly
             value={value.address}
             aria-invalid={!!error}
-            className="h-11 flex-1 text-base dark:bg-input/30"
+            className="h-11 flex-1 px-3 text-base dark:bg-input/30"
           />
           <Button
             type="button"
@@ -191,7 +210,7 @@ export function PlaceLocationField({
         value={query}
         disabled={resolving}
         placeholder="Search for a hospital or address…"
-        className="h-11 text-base dark:bg-input/30"
+        className="h-11 px-3 text-base dark:bg-input/30"
         onChange={(event) => {
           setQuery(event.target.value);
           setSearchError(undefined);
@@ -204,16 +223,17 @@ export function PlaceLocationField({
       />
       {showSuggestions ? (
         <div
+          ref={listRef}
           id={listboxId}
           role="listbox"
-          className="space-y-1 rounded-xl bg-bb-white p-1 ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700"
+          className={SUGGESTION_PANEL_CLASS}
         >
           {suggestions.map((suggestion) => (
             <button
               key={suggestion.placeId}
               type="button"
               role="option"
-              className="flex min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-bb-gray-900 hover:bg-bb-gray-50 dark:text-bb-gray-100 dark:hover:bg-muted/50"
+              className={OPTION_BUTTON_CLASS}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() =>
                 void selectSuggestion(
@@ -231,10 +251,7 @@ export function PlaceLocationField({
         </div>
       ) : null}
       {showSaved ? (
-        <div
-          id={listboxId}
-          className="space-y-4 rounded-xl bg-bb-white p-3 ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700"
-        >
+        <div ref={listRef} id={listboxId} className={SAVED_PANEL_CLASS}>
           <SavedLocationList
             heading="Recent"
             locations={recent}

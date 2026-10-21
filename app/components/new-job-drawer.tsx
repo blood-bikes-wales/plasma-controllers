@@ -82,8 +82,8 @@ function FormSection({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="rounded-bb-card border-0 bg-bb-white py-0 shadow-none ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700">
-      <CardContent className="space-y-4 pt-5">
+    <Card className="overflow-visible rounded-bb-card border-0 bg-bb-white py-0 shadow-none ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700">
+      <CardContent className="space-y-4 px-5 py-5">
         <h2 className="text-base font-bold text-bb-gray-900 dark:text-bb-gray-100">
           {title}
         </h2>
@@ -265,7 +265,7 @@ export function NewJobDrawer({
         side="right"
         className="flex w-full max-w-full flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:max-w-full sm:max-w-xl data-[side=right]:sm:max-w-xl"
       >
-        <SheetHeader className="shrink-0 border-b border-bb-gray-100 px-5 py-4 text-left dark:border-bb-gray-700">
+        <SheetHeader className="shrink-0 border-b border-bb-gray-100 px-5 py-4 pr-12 text-left dark:border-bb-gray-700">
           <SheetTitle className="text-xl font-extrabold text-bb-gray-900 dark:text-bb-gray-100">
             New Job
           </SheetTitle>
@@ -282,7 +282,7 @@ export function NewJobDrawer({
             void handleCreate();
           }}
         >
-          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+          <div className="flex-1 space-y-4 overflow-y-auto scroll-pb-10 px-5 py-5 pb-10">
             <FormSection title="Sender">
               <div className="space-y-2">
                 <Label

@@ -378,7 +378,7 @@ export function AssignRiderDrawer({
           </>
         ) : (
           <>
-            <SheetHeader className="shrink-0 border-b border-bb-gray-100 px-5 py-4 text-left dark:border-bb-gray-700">
+            <SheetHeader className="shrink-0 border-b border-bb-gray-100 px-5 py-4 pr-12 text-left dark:border-bb-gray-700">
               <SheetTitle className="text-xl font-extrabold text-bb-gray-900 dark:text-bb-gray-100">
                 Assign rider
               </SheetTitle>
@@ -413,7 +413,7 @@ export function AssignRiderDrawer({
                 </Card>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-5 py-5">
+              <div className="flex-1 overflow-y-auto scroll-pb-10 px-5 py-5 pb-10">
                 <div className="mb-4 space-y-1">
                   <h2 className="text-base font-bold text-bb-gray-900 dark:text-bb-gray-100">
                     Available riders

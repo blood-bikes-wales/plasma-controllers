@@ -55,7 +55,18 @@ describe("PlaceLocationField", () => {
   it("resolves a typed suggestion to a full place location", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
-    const lookup = stubLookup();
+    const lookup = stubLookup({
+      suggest: vi.fn(async () => [
+        {
+          placeId: GLAMORGAN.placeId,
+          description: "Royal Glamorgan Hospital, Ynysmaerdy, Llantrisant",
+        },
+      ]),
+      details: vi.fn(async () => ({
+        ...GLAMORGAN,
+        address: "Ynysmaerdy, Llantrisant CF72 8XR, UK",
+      })),
+    });
 
     render(
       <PlaceLocationField
@@ -73,13 +84,18 @@ describe("PlaceLocationField", () => {
     );
 
     await user.click(
-      await screen.findByRole("option", { name: GLAMORGAN.address }),
+      await screen.findByRole("option", {
+        name: "Royal Glamorgan Hospital, Ynysmaerdy, Llantrisant",
+      }),
     );
 
     await waitFor(() => {
       expect(lookup.details).toHaveBeenCalledWith(GLAMORGAN.placeId);
     });
-    expect(onChange).toHaveBeenCalledWith(GLAMORGAN);
+    expect(onChange).toHaveBeenCalledWith({
+      ...GLAMORGAN,
+      address: "Royal Glamorgan Hospital, Ynysmaerdy, Llantrisant",
+    });
   });
 
   it("lets the user pick a recently used location without searching", async () => {

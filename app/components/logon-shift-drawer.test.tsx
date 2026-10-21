@@ -63,9 +63,11 @@ describe("LogonShiftDrawer", () => {
     expect(submitButton).toBeDisabled();
 
     await selectOption(user, "Rider", "Sarah Jones");
+    expect(screen.getByDisplayValue("Sarah Jones")).toBeInTheDocument();
     expect(submitButton).toBeDisabled();
 
     await selectOption(user, "Bike", "CF12 ABC");
+    expect(screen.getByDisplayValue("CF12 ABC")).toBeInTheDocument();
     expect(submitButton).toBeDisabled();
 
     await user.type(screen.getByLabelText("Start mileage"), "15234");

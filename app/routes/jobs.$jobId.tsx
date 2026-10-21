@@ -6,18 +6,12 @@ import { z } from "zod";
 import { FieldError } from "~/components/field-error";
 import { JobLegsPanel } from "~/components/job-legs-panel";
 import { RelayJobForm } from "~/components/relay-job-form";
+import { SearchableSelectField } from "~/components/searchable-select-field";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
 import { useAuth } from "~/lib/auth";
 import { canManageJobs } from "~/lib/capabilities";
@@ -139,33 +133,22 @@ function AllocateJobForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="space-y-2">
-        <Label htmlFor="allocate-shift">Active shift rider</Label>
-        <Select
-          value={shiftId}
-          onValueChange={(value) => {
-            setShiftId(value);
-            setFieldError(null);
-          }}
-        >
-          <SelectTrigger id="allocate-shift" className="w-full">
-            <SelectValue placeholder="Select a rider on duty" />
-          </SelectTrigger>
-          <SelectContent>
-            {shifts.map((shift) => (
-              <SelectItem key={shift.id} value={shift.id}>
-                {shift.riderName} · {shift.bikeRegistration}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <FieldError message={fieldError} />
-        {shifts.length === 0 ? (
-          <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
-            No riders are currently on an active shift.
-          </p>
-        ) : null}
-      </div>
+      <SearchableSelectField
+        id="allocate-shift"
+        label="Active shift rider"
+        value={shiftId}
+        onChange={(value) => {
+          setShiftId(value);
+          setFieldError(null);
+        }}
+        options={shifts.map((shift) => ({
+          value: shift.id,
+          label: `${shift.riderName} · ${shift.bikeRegistration}`,
+        }))}
+        placeholder="Search or select a rider on duty…"
+        error={fieldError ?? undefined}
+        emptyMessage="No riders are currently on an active shift."
+      />
       <Button type="submit" disabled={isSubmitting || shifts.length === 0}>
         Allocate rider
       </Button>
@@ -227,33 +210,31 @@ function CollectJobForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="space-y-2">
-        <Label htmlFor="contents-confirmed">Contents confirmed</Label>
-        <Select value={contentsConfirmed} onValueChange={setContentsConfirmed}>
-          <SelectTrigger id="contents-confirmed">
-            <SelectValue placeholder="Select yes or no" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="yes">Yes</SelectItem>
-            <SelectItem value="no">No</SelectItem>
-          </SelectContent>
-        </Select>
-        <FieldError message={errors.contentsConfirmed} />
-      </div>
+      <SearchableSelectField
+        id="contents-confirmed"
+        label="Contents confirmed"
+        value={contentsConfirmed}
+        onChange={setContentsConfirmed}
+        options={[
+          { value: "yes", label: "Yes" },
+          { value: "no", label: "No" },
+        ]}
+        placeholder="Select yes or no…"
+        error={errors.contentsConfirmed}
+      />
 
-      <div className="space-y-2">
-        <Label htmlFor="suitably-sealed">Suitably sealed</Label>
-        <Select value={suitablySealed} onValueChange={setSuitablySealed}>
-          <SelectTrigger id="suitably-sealed">
-            <SelectValue placeholder="Select yes or no" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="yes">Yes</SelectItem>
-            <SelectItem value="no">No</SelectItem>
-          </SelectContent>
-        </Select>
-        <FieldError message={errors.suitablySealed} />
-      </div>
+      <SearchableSelectField
+        id="suitably-sealed"
+        label="Suitably sealed"
+        value={suitablySealed}
+        onChange={setSuitablySealed}
+        options={[
+          { value: "yes", label: "Yes" },
+          { value: "no", label: "No" },
+        ]}
+        placeholder="Select yes or no…"
+        error={errors.suitablySealed}
+      />
 
       {suitablySealed === "yes" ? (
         <div className="space-y-2">
