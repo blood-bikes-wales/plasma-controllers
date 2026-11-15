@@ -135,6 +135,68 @@ describe("ShiftsPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("only offers bikes from the selected rider's areas", async () => {
+    const user = userEvent.setup();
+    renderShiftsPage();
+    await waitForShiftsLoaded();
+
+    await user.click(screen.getByRole("button", { name: "Log on rider" }));
+
+    await user.click(screen.getByRole("combobox", { name: "Rider" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Sarah Jones" }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Bike" }));
+    expect(
+      await screen.findByRole("option", { name: "CF12 ABC" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "CF56 GHI" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers a multi-area rider the bikes from each of their areas", async () => {
+    const user = userEvent.setup();
+    renderShiftsPage();
+    await waitForShiftsLoaded();
+
+    await user.click(screen.getByRole("button", { name: "Log on rider" }));
+
+    await user.click(screen.getByRole("combobox", { name: "Rider" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Emma Williams" }),
+    );
+
+    await user.click(screen.getByRole("combobox", { name: "Bike" }));
+    expect(
+      await screen.findByRole("option", { name: "CF12 ABC" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "CF56 GHI" }),
+    ).toBeInTheDocument();
+  });
+
+  it("explains that a rider with no area role cannot be given a bike", async () => {
+    const user = userEvent.setup();
+    renderShiftsPage();
+    await waitForShiftsLoaded();
+
+    await user.click(screen.getByRole("button", { name: "Log on rider" }));
+
+    await user.click(screen.getByRole("combobox", { name: "Rider" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Priya Patel" }),
+    );
+
+    expect(screen.getByRole("combobox", { name: "Bike" })).toBeDisabled();
+    expect(
+      screen.getByText(
+        "This rider has no area role in Three Rings, so no bike can be assigned.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("lets a coordinator log off a rider and updates the bike mileage", async () => {
     const user = userEvent.setup();
     renderShiftsPage();
