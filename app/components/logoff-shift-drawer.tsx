@@ -13,7 +13,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "~/components/ui/sheet";
+import { Switch } from "~/components/ui/switch";
 import { Textarea } from "~/components/ui/textarea";
+import type { LogoffShiftPayload } from "~/lib/shifts";
 import { fieldErrors } from "~/lib/validation";
 
 type LogoffShiftSummary = {
@@ -24,10 +26,7 @@ type LogoffShiftSummary = {
   startedAt: string;
 };
 
-type LogoffShiftResult = {
-  endMileage: number;
-  faults?: string;
-};
+type LogoffShiftResult = LogoffShiftPayload;
 
 type LogoffShiftDrawerProps = {
   open: boolean;
@@ -71,11 +70,13 @@ export function LogoffShiftDrawer({
 }: LogoffShiftDrawerProps) {
   const [endMileage, setEndMileage] = useState("");
   const [faults, setFaults] = useState("");
+  const [keptAtHome, setKeptAtHome] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setEndMileage("");
       setFaults("");
+      setKeptAtHome(false);
     }
   }, [open]);
 
@@ -94,6 +95,7 @@ export function LogoffShiftDrawer({
     onLogoff(shift.id, {
       endMileage: Number(result.data.endMileage),
       faults: result.data.faults.trim() || undefined,
+      bikeKeptAt: keptAtHome ? "home" : "lockup",
     });
   }
 
@@ -146,6 +148,25 @@ export function LogoffShiftDrawer({
                 aria-invalid={!!errors.endMileage}
               />
               <FieldError message={errors.endMileage} />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <Label
+                  htmlFor="logoff-bike-location"
+                  className="text-bb-gray-700 dark:text-bb-gray-300"
+                >
+                  Bike location
+                </Label>
+                <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
+                  {keptAtHome ? "Kept at home overnight" : "Lockup"}
+                </p>
+              </div>
+              <Switch
+                id="logoff-bike-location"
+                checked={keptAtHome}
+                onCheckedChange={setKeptAtHome}
+              />
             </div>
 
             <div className="space-y-2">

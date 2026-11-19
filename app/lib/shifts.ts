@@ -32,9 +32,13 @@ export type LogonShiftPayload = {
   mileageVarianceReason?: string;
 };
 
+/** Where the bike was left when the rider logged off. */
+export type BikeKeptAt = "lockup" | "home";
+
 export type LogoffShiftPayload = {
   endMileage: number;
   faults?: string;
+  bikeKeptAt: BikeKeptAt;
 };
 
 type DataList<T> = { data: T[] };
