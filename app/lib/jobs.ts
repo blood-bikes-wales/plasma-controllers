@@ -35,8 +35,6 @@ export type JobAllocatedRider = {
 
 export type JobCollectionRecord = {
   contentsConfirmed: boolean;
-  suitablySealed: boolean;
-  sealNumber: string | null;
   receiptNumber: string;
   collectedAt: string | null;
 };
@@ -65,8 +63,6 @@ export type AllocateJobPayload = {
 
 export type CollectJobPayload = {
   contentsConfirmed: boolean;
-  suitablySealed: boolean;
-  sealNumber?: string;
   receiptNumber: string;
   collectedAt?: string;
 };

@@ -38,13 +38,16 @@ function renderJobDetail({
   const user = { ...mockAuthUser, roles };
   setAuthToken("test-google-id-token");
   setActiveRole(roles[0]);
-  vi.stubGlobal("fetch", stubJobsFetch(user));
+  const fetchStub = vi.fn(stubJobsFetch(user));
+  vi.stubGlobal("fetch", fetchStub);
 
   const router = createMemoryRouter(withAuthProvider(appRoutes), {
     initialEntries: [`/jobs/${jobId}`],
   });
 
   render(<RouterProvider router={router} />);
+
+  return { fetchStub };
 }
 
 afterEach(() => {
@@ -152,12 +155,55 @@ describe("Record collection job number", () => {
 
     await user.click(await screen.findByLabelText("Contents confirmed"));
     await user.click(await screen.findByRole("option", { name: "Yes" }));
-    await user.click(screen.getByLabelText("Suitably sealed"));
-    await user.click(await screen.findByRole("option", { name: "No" }));
     await user.type(screen.getByLabelText("Job number"), "JN-2042");
     await user.click(screen.getByRole("button", { name: "Record collection" }));
 
     expect(await screen.findByText("Collected · job JN-2042")).toBeVisible();
     expect(screen.queryByText(/receipt/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("Record collection fields", () => {
+  const allocatedJobId = mockActiveJobs[1].id;
+
+  it("does not ask whether the package is sealed or for a seal number", async () => {
+    renderJobDetail({ jobId: allocatedJobId });
+
+    expect(
+      await screen.findByRole("heading", { name: "Record collection" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Contents confirmed")).toBeInTheDocument();
+    expect(screen.getByLabelText("Job number")).toBeInTheDocument();
+    expect(screen.getByLabelText("Collection time")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Suitably sealed")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Seal number")).not.toBeInTheDocument();
+    expect(screen.queryByText(/seal/i)).not.toBeInTheDocument();
+  });
+
+  it("submits the collection without seal fields", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({ jobId: allocatedJobId });
+
+    await user.click(await screen.findByLabelText("Contents confirmed"));
+    await user.click(await screen.findByRole("option", { name: "Yes" }));
+    await user.type(screen.getByLabelText("Job number"), "JN-2043");
+    await user.click(screen.getByRole("button", { name: "Record collection" }));
+
+    expect(await screen.findByText("Collected · job JN-2043")).toBeVisible();
+
+    const collectCall = fetchStub.mock.calls.find(([input]) =>
+      String(input instanceof Request ? input.url : input).includes(
+        "/actions/collect",
+      ),
+    );
+    expect(collectCall).toBeDefined();
+    const [, init] = collectCall ?? [];
+    const body = JSON.parse(String(init?.body));
+    expect(body).toMatchObject({
+      contentsConfirmed: true,
+      receiptNumber: "JN-2043",
+    });
+    expect(body).not.toHaveProperty("suitablySealed");
+    expect(body).not.toHaveProperty("sealNumber");
   });
 });

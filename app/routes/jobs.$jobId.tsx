@@ -38,31 +38,13 @@ const allocateSchema = z.object({
   shiftId: z.string().min(1, "Select a rider on an active shift"),
 });
 
-const collectSchema = z
-  .object({
-    contentsConfirmed: z.enum(["yes", "no"], {
-      message: "Confirm whether the contents match the job",
-    }),
-    suitablySealed: z.enum(["yes", "no"], {
-      message: "Confirm whether the package is suitably sealed",
-    }),
-    sealNumber: z.string(),
-    receiptNumber: z.string().trim().min(1, "Enter a job number"),
-    collectedAt: z.string().trim().min(1, "Enter a collection time"),
-  })
-  .superRefine((data, ctx) => {
-    if (data.suitablySealed !== "yes") {
-      return;
-    }
-
-    if (data.sealNumber.trim() === "") {
-      ctx.addIssue({
-        code: "custom",
-        path: ["sealNumber"],
-        message: "Enter a seal number when the package is suitably sealed",
-      });
-    }
-  });
+const collectSchema = z.object({
+  contentsConfirmed: z.enum(["yes", "no"], {
+    message: "Confirm whether the contents match the job",
+  }),
+  receiptNumber: z.string().trim().min(1, "Enter a job number"),
+  collectedAt: z.string().trim().min(1, "Enter a collection time"),
+});
 
 const deliverSchema = z.object({
   recipient: z.string().trim().min(1, "Enter the recipient"),
@@ -163,8 +145,6 @@ function CollectJobForm({
   isSubmitting: boolean;
   onSubmit: (payload: {
     contentsConfirmed: boolean;
-    suitablySealed: boolean;
-    sealNumber?: string;
     receiptNumber: string;
     collectedAt: string;
   }) => Promise<void>;
@@ -172,8 +152,6 @@ function CollectJobForm({
   const [contentsConfirmed, setContentsConfirmed] = useState<string | null>(
     null,
   );
-  const [suitablySealed, setSuitablySealed] = useState<string | null>(null);
-  const [sealNumber, setSealNumber] = useState("");
   const [receiptNumber, setReceiptNumber] = useState("");
   const [collectedAt, setCollectedAt] = useState(defaultDateTimeLocalValue());
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -184,8 +162,6 @@ function CollectJobForm({
 
     const parsed = collectSchema.safeParse({
       contentsConfirmed: contentsConfirmed ?? "",
-      suitablySealed: suitablySealed ?? "",
-      sealNumber,
       receiptNumber,
       collectedAt,
     });
@@ -198,11 +174,6 @@ function CollectJobForm({
 
     await onSubmit({
       contentsConfirmed: parsed.data.contentsConfirmed === "yes",
-      suitablySealed: parsed.data.suitablySealed === "yes",
-      sealNumber:
-        parsed.data.suitablySealed === "yes"
-          ? parsed.data.sealNumber.trim()
-          : undefined,
       receiptNumber: parsed.data.receiptNumber,
       collectedAt: fromDateTimeLocalValue(parsed.data.collectedAt) ?? "",
     });
@@ -222,31 +193,6 @@ function CollectJobForm({
         placeholder="Select yes or no…"
         error={errors.contentsConfirmed}
       />
-
-      <SearchableSelectField
-        id="suitably-sealed"
-        label="Suitably sealed"
-        value={suitablySealed}
-        onChange={setSuitablySealed}
-        options={[
-          { value: "yes", label: "Yes" },
-          { value: "no", label: "No" },
-        ]}
-        placeholder="Select yes or no…"
-        error={errors.suitablySealed}
-      />
-
-      {suitablySealed === "yes" ? (
-        <div className="space-y-2">
-          <Label htmlFor="seal-number">Seal number</Label>
-          <Input
-            id="seal-number"
-            value={sealNumber}
-            onChange={(event) => setSealNumber(event.target.value)}
-          />
-          <FieldError message={errors.sealNumber} />
-        </div>
-      ) : null}
 
       <div className="space-y-2">
         <Label htmlFor="job-number">Job number</Label>

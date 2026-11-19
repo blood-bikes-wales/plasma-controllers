@@ -144,9 +144,6 @@ function applyLifecycleAction(
       allowedActions: ["deliver", "cancel"],
       collectionRecord: {
         contentsConfirmed: Boolean(payload.contentsConfirmed),
-        suitablySealed: Boolean(payload.suitablySealed),
-        sealNumber:
-          typeof payload.sealNumber === "string" ? payload.sealNumber : null,
         receiptNumber: String(payload.receiptNumber ?? "RCP-1"),
         collectedAt: new Date().toISOString(),
       },
