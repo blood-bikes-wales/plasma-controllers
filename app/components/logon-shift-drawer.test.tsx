@@ -82,6 +82,9 @@ describe("LogonShiftDrawer", () => {
 
     await selectOption(user, "Bike", "CF12 ABC");
     expect(screen.getByDisplayValue("CF12 ABC")).toBeInTheDocument();
+    expect(submitButton).toBeEnabled();
+
+    await user.clear(screen.getByLabelText("Start mileage"));
     expect(submitButton).toBeDisabled();
 
     await user.type(screen.getByLabelText("Start mileage"), "15234");
@@ -94,7 +97,6 @@ describe("LogonShiftDrawer", () => {
 
     await selectOption(user, "Rider", "Sarah Jones");
     await selectOption(user, "Bike", "CF12 ABC");
-    await user.type(screen.getByLabelText("Start mileage"), "15234");
     await user.click(screen.getByRole("button", { name: "Log on" }));
 
     expect(onLogon).toHaveBeenCalledWith({
@@ -113,7 +115,9 @@ describe("LogonShiftDrawer", () => {
 
     await selectOption(user, "Rider", "Sarah Jones");
     await selectOption(user, "Bike", "CF12 ABC");
-    await user.type(screen.getByLabelText("Start mileage"), "16000");
+    const mileageInput = screen.getByLabelText("Start mileage");
+    await user.clear(mileageInput);
+    await user.type(mileageInput, "16000");
 
     expect(
       screen.getByText(/does not match this bike's last recorded mileage/i),
@@ -135,6 +139,88 @@ describe("LogonShiftDrawer", () => {
       bikeRegistration: "CF12 ABC",
       startMileage: 16000,
       mileageVarianceReason: "Odometer reset after a repair",
+    });
+  });
+
+  describe("start mileage prefill", () => {
+    it("prefills the last recorded mileage and drops the helper line", async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      await selectOption(user, "Rider", "Emma Williams");
+      expect(screen.getByLabelText("Start mileage")).toHaveValue(null);
+
+      await selectOption(user, "Bike", "CF12 ABC");
+
+      expect(screen.getByLabelText("Start mileage")).toHaveValue(15234);
+      expect(
+        screen.queryByText(/Last recorded mileage/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(/does not match this bike's last recorded mileage/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it("replaces the mileage when the bike changes", async () => {
+      const user = userEvent.setup();
+      renderDrawer({
+        riders: [{ id: "r5", name: "Gwen Hughes", areas: ["E", "S"] }],
+      });
+
+      await selectOption(user, "Rider", "Gwen Hughes");
+      await selectOption(user, "Bike", "CF12 ABC");
+      expect(screen.getByLabelText("Start mileage")).toHaveValue(15234);
+
+      await user.click(screen.getAllByRole("button", { name: "Change" })[1]);
+      await selectOption(user, "Bike", "CF56 GHI");
+
+      expect(screen.getByLabelText("Start mileage")).toHaveValue(22110);
+    });
+
+    it("clears the mileage when the rider change drops the bike", async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      await selectOption(user, "Rider", "Sarah Jones");
+      await selectOption(user, "Bike", "CF12 ABC");
+      expect(screen.getByLabelText("Start mileage")).toHaveValue(15234);
+
+      await user.click(screen.getAllByRole("button", { name: "Change" })[0]);
+      await selectOption(user, "Rider", "Mark Evans");
+
+      expect(screen.getByLabelText("Start mileage")).toHaveValue(null);
+    });
+
+    it("still asks for a reason and submits an edited prefilled value", async () => {
+      const user = userEvent.setup();
+      const { onLogon } = renderDrawer();
+
+      await selectOption(user, "Rider", "Sarah Jones");
+      await selectOption(user, "Bike", "CF12 ABC");
+
+      const mileageInput = screen.getByLabelText("Start mileage");
+      await user.clear(mileageInput);
+      await user.type(mileageInput, "16000");
+
+      expect(
+        screen.getByText(/does not match this bike's last recorded mileage/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Log on" })).toBeDisabled();
+
+      await user.type(
+        screen.getByLabelText("Reason for the mileage difference"),
+        "Odometer reset",
+      );
+      await user.click(screen.getByRole("button", { name: "Log on" }));
+
+      expect(onLogon).toHaveBeenCalledWith({
+        riderId: "r1",
+        riderName: "Sarah Jones",
+        bikeId: "bk1",
+        bikeRegistration: "CF12 ABC",
+        startMileage: 16000,
+        mileageVarianceReason: "Odometer reset",
+      });
     });
   });
 
@@ -257,7 +343,8 @@ describe("LogonShiftDrawer", () => {
     );
 
     await selectOption(user, "Rider", "Sarah Jones");
-    await user.type(screen.getByLabelText("Start mileage"), "15234");
+    await selectOption(user, "Bike", "CF12 ABC");
+    expect(screen.getByLabelText("Start mileage")).toHaveValue(15234);
 
     rerender(
       <LogonShiftDrawer

@@ -152,6 +152,20 @@ export function LogonShiftDrawer({
   }
 
   /**
+   * Choosing a different bike replaces the start mileage with that bike's last
+   * recorded figure (and drops any variance reason written for the old bike);
+   * clearing the bike empties it. Re-choosing the same bike keeps any edit.
+   */
+  function handleBikeChange(nextBikeId: string | null) {
+    if (nextBikeId === bikeId) return;
+
+    const nextBike = bikes.find((bike) => bike.id === nextBikeId);
+    setBikeId(nextBikeId);
+    setStartMileage(nextBike ? String(nextBike.lastRecordedMileage) : "");
+    setVarianceReason("");
+  }
+
+  /**
    * A chosen bike is dropped when it is not in any area the newly selected rider
    * covers. Clearing the rider keeps it: the bike field stays hidden until a rider
    * is chosen again, and "Change" always passes through no rider.
@@ -164,7 +178,7 @@ export function LogonShiftDrawer({
     const stillValid = bikesInRiderAreas(bikes, nextRider).some(
       (bike) => bike.id === bikeId,
     );
-    if (!stillValid) setBikeId(null);
+    if (!stillValid) handleBikeChange(null);
   }
 
   function handleSubmit() {
@@ -223,7 +237,7 @@ export function LogonShiftDrawer({
               id="logon-bike"
               label="Bike"
               value={bikeId}
-              onChange={setBikeId}
+              onChange={handleBikeChange}
               options={riderBikes.map((bike) => ({
                 value: bike.id,
                 label: bike.registration,
@@ -251,11 +265,6 @@ export function LogonShiftDrawer({
                 className="h-11 text-base dark:bg-input/30"
                 placeholder="e.g. 15234"
               />
-              {selectedBike ? (
-                <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
-                  Last recorded mileage: {selectedBike.lastRecordedMileage}
-                </p>
-              ) : null}
               <FieldError message={errors.startMileage} />
             </div>
 
