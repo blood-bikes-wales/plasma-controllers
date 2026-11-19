@@ -72,7 +72,7 @@ describe("ShiftsPage", () => {
     await user.click(screen.getByRole("combobox", { name: "Bike" }));
     await user.click(await screen.findByRole("option", { name: "CF12 ABC" }));
 
-    await user.type(screen.getByLabelText("Start mileage"), "15234");
+    expect(screen.getByLabelText("Start mileage")).toHaveValue(15234);
 
     const logOnButton = screen.getByRole("button", { name: "Log on" });
     expect(logOnButton).toBeEnabled();
@@ -99,7 +99,9 @@ describe("ShiftsPage", () => {
     await user.click(screen.getByRole("combobox", { name: "Bike" }));
     await user.click(await screen.findByRole("option", { name: "CF12 ABC" }));
 
-    await user.type(screen.getByLabelText("Start mileage"), "16000");
+    const mileageInput = screen.getByLabelText("Start mileage");
+    await user.clear(mileageInput);
+    await user.type(mileageInput, "16000");
 
     const logOnButton = screen.getByRole("button", { name: "Log on" });
     expect(logOnButton).toBeDisabled();
