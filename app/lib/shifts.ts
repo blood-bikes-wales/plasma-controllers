@@ -8,7 +8,11 @@ export type Bike = {
   lastRecordedMileage: number;
 };
 
-export type RiderOption = { id: string; name: string };
+/**
+ * A rider offered at logon. `areas` holds the service-area codes the rider
+ * covers (from their Three Rings `Rider - <area>` roles), matching `Bike.area`.
+ */
+export type RiderOption = { id: string; name: string; areas: string[] };
 
 export type ActiveShift = {
   id: string;

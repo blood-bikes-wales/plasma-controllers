@@ -18,6 +18,7 @@ import {
   formatShiftStartedAt,
   logoffShift,
   logonShift,
+  type RiderOption,
 } from "~/lib/shifts";
 
 import type { Route } from "./+types/shifts";
@@ -91,7 +92,7 @@ export default function ShiftsPage() {
   const canManage = user?.roles.some((role) => MANAGE_ROLES.has(role)) ?? false;
 
   const [bikes, setBikes] = useState<Bike[]>([]);
-  const [riders, setRiders] = useState<{ id: string; name: string }[]>([]);
+  const [riders, setRiders] = useState<RiderOption[]>([]);
   const [activeShifts, setActiveShifts] = useState<ActiveShift[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

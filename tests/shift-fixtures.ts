@@ -6,25 +6,29 @@ import type { ActiveShift, Bike, RiderOption } from "~/lib/shifts";
 import { mockAuthUser } from "./auth-fixtures";
 
 export const mockRiders: RiderOption[] = [
-  { id: "100001", name: "Sarah Jones" },
-  { id: "100002", name: "Mike Davies" },
-  { id: "100003", name: "Emma Williams" },
+  { id: "100001", name: "Sarah Jones", areas: ["E"] },
+  { id: "100002", name: "Mike Davies", areas: ["E"] },
+  { id: "100003", name: "Emma Williams", areas: ["E", "C"] },
+  { id: "100004", name: "Priya Patel", areas: [] },
 ];
 
 export const mockBikes: Bike[] = [
   {
     id: "11111111-1111-1111-1111-111111111111",
     registration: "CF12 ABC",
+    area: "E",
     lastRecordedMileage: 15234,
   },
   {
     id: "22222222-2222-2222-2222-222222222222",
     registration: "CF34 DEF",
+    area: "E",
     lastRecordedMileage: 9820,
   },
   {
     id: "33333333-3333-3333-3333-333333333333",
     registration: "CF56 GHI",
+    area: "C",
     lastRecordedMileage: 22110,
   },
 ];

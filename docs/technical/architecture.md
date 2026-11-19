@@ -116,7 +116,7 @@ All calls go through `apiFetch` with `Authorization: Bearer <google_id_token>` u
 | `GET /shifts/active` | `shifts.ts` | On-duty riders |
 | `POST /shifts/logon` | `shifts.ts` | Start shift |
 | `POST /shifts/:id/logoff` | `shifts.ts` | End shift |
-| `GET /bikes`, `GET /volunteers` | `shifts.ts` | Logon form options |
+| `GET /bikes`, `GET /volunteers` | `shifts.ts` | Logon form options. Each volunteer carries `areas` (service-area codes); the logon drawer lists only bikes whose `area` is one of the chosen rider's `areas` |
 | `GET /directory/volunteers` | `directory.ts` | Search volunteers |
 | `GET /directory/bikes`, `GET /directory/bikes/:id` | `directory.ts` | Search bikes, mileage history |
 

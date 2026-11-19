@@ -18,11 +18,14 @@ import {
 import { Textarea } from "~/components/ui/textarea";
 import { fieldErrors } from "~/lib/validation";
 
-type RiderOption = { id: string; name: string };
+/** `areas` are the service-area codes the rider covers; compared with `BikeOption.area`. */
+type RiderOption = { id: string; name: string; areas: string[] };
 
 type BikeOption = {
   id: string;
   registration: string;
+  /** Service-area code the bike belongs to. */
+  area?: string;
   lastRecordedMileage: number;
 };
 
@@ -56,6 +59,26 @@ const mileageFieldSchema = z
       ctx.addIssue({ code: "custom", message: "Enter a valid mileage" });
     }
   });
+
+/** Bikes the rider may use: those in any area they cover. No rider, or no areas, means no bikes. */
+function bikesInRiderAreas(
+  bikes: BikeOption[],
+  rider: RiderOption | undefined,
+): BikeOption[] {
+  if (!rider) return [];
+
+  return bikes.filter(
+    (bike) => bike.area !== undefined && rider.areas.includes(bike.area),
+  );
+}
+
+function noBikesMessage(rider: RiderOption | undefined): string {
+  if (!rider) return "Select a rider to see the bikes in their area.";
+  if (rider.areas.length === 0) {
+    return "This rider has no area role in Three Rings, so no bike can be assigned.";
+  }
+  return "No bikes are available in this rider's area.";
+}
 
 /** Requires a variance reason once the start mileage differs from `bike.lastRecordedMileage`. */
 function createLogonShiftSchema(bikes: BikeOption[]) {
@@ -105,7 +128,9 @@ export function LogonShiftDrawer({
     }
   }, [open]);
 
-  const selectedBike = bikes.find((bike) => bike.id === bikeId);
+  const selectedRider = riders.find((rider) => rider.id === riderId);
+  const riderBikes = bikesInRiderAreas(bikes, selectedRider);
+  const selectedBike = riderBikes.find((bike) => bike.id === bikeId);
   const startMileageValue = Number(startMileage.trim());
   const hasVariance =
     !!selectedBike &&
@@ -113,10 +138,10 @@ export function LogonShiftDrawer({
     Number.isFinite(startMileageValue) &&
     startMileageValue !== selectedBike.lastRecordedMileage;
 
-  const schema = createLogonShiftSchema(bikes);
+  const schema = createLogonShiftSchema(riderBikes);
   const result = schema.safeParse({
     riderId: riderId ?? "",
-    bikeId: bikeId ?? "",
+    bikeId: selectedBike?.id ?? "",
     startMileage,
     mileageVarianceReason: varianceReason,
   });
@@ -126,13 +151,31 @@ export function LogonShiftDrawer({
     onOpenChange(false);
   }
 
+  /**
+   * A chosen bike is dropped when it is not in any area the newly selected rider
+   * covers. Clearing the rider keeps it: the bike field stays hidden until a rider
+   * is chosen again, and "Change" always passes through no rider.
+   */
+  function handleRiderChange(nextRiderId: string | null) {
+    setRiderId(nextRiderId);
+    if (nextRiderId === null) return;
+
+    const nextRider = riders.find((rider) => rider.id === nextRiderId);
+    const stillValid = bikesInRiderAreas(bikes, nextRider).some(
+      (bike) => bike.id === bikeId,
+    );
+    if (!stillValid) setBikeId(null);
+  }
+
   function handleSubmit() {
     if (!result.success) return;
 
     const rider = riders.find(
       (candidate) => candidate.id === result.data.riderId,
     );
-    const bike = bikes.find((candidate) => candidate.id === result.data.bikeId);
+    const bike = riderBikes.find(
+      (candidate) => candidate.id === result.data.bikeId,
+    );
     if (!rider || !bike) return;
 
     onLogon({
@@ -166,7 +209,7 @@ export function LogonShiftDrawer({
               id="logon-rider"
               label="Rider"
               value={riderId}
-              onChange={setRiderId}
+              onChange={handleRiderChange}
               options={riders.map((rider) => ({
                 value: rider.id,
                 label: rider.name,
@@ -181,13 +224,13 @@ export function LogonShiftDrawer({
               label="Bike"
               value={bikeId}
               onChange={setBikeId}
-              options={bikes.map((bike) => ({
+              options={riderBikes.map((bike) => ({
                 value: bike.id,
                 label: bike.registration,
               }))}
               placeholder="Search or select bike…"
               error={errors.bikeId}
-              emptyMessage="Every bike is already on shift."
+              emptyMessage={noBikesMessage(selectedRider)}
             />
 
             <div className="space-y-2">
