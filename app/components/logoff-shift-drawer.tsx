@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { FieldError } from "~/components/field-error";
 import { Button } from "~/components/ui/button";
+import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import {
@@ -15,7 +16,7 @@ import {
 } from "~/components/ui/sheet";
 import { Switch } from "~/components/ui/switch";
 import { Textarea } from "~/components/ui/textarea";
-import type { LogoffShiftPayload } from "~/lib/shifts";
+import { isSillyMileageChange, type LogoffShiftPayload } from "~/lib/shifts";
 import { fieldErrors } from "~/lib/validation";
 
 type LogoffShiftSummary = {
@@ -38,28 +39,58 @@ type LogoffShiftDrawerProps = {
 const SHEET_CONTENT_CLASS =
   "flex w-full max-w-full flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:max-w-full sm:max-w-xl data-[side=right]:sm:max-w-xl";
 
-/** Requires end mileage to be a valid number no lower than `startMileage`. */
+/**
+ * The mileage change over the shift, or null while the end mileage is blank or
+ * not a number.
+ */
+function mileageChange(startMileage: number, endMileage: string) {
+  const trimmed = endMileage.trim();
+  const numeric = Number(trimmed);
+  if (trimmed === "" || !Number.isFinite(numeric)) return null;
+  return numeric - startMileage;
+}
+
+/**
+ * Requires end mileage to be a valid number no lower than `startMileage`, and
+ * an explanation when the change reaches the silly mileage threshold.
+ */
 function createLogoffShiftSchema(startMileage: number) {
-  return z.object({
-    endMileage: z
-      .string()
-      .trim()
-      .min(1, "Enter the end mileage")
-      .superRefine((value, ctx) => {
-        const numeric = Number(value);
-        if (!Number.isFinite(numeric)) {
-          ctx.addIssue({ code: "custom", message: "Enter a valid mileage" });
-          return;
-        }
-        if (numeric < startMileage) {
-          ctx.addIssue({
-            code: "custom",
-            message: `End mileage cannot be lower than the start mileage of ${startMileage}.`,
-          });
-        }
-      }),
-    faults: z.string(),
-  });
+  return z
+    .object({
+      endMileage: z
+        .string()
+        .trim()
+        .min(1, "Enter the end mileage")
+        .superRefine((value, ctx) => {
+          const numeric = Number(value);
+          if (!Number.isFinite(numeric)) {
+            ctx.addIssue({ code: "custom", message: "Enter a valid mileage" });
+            return;
+          }
+          if (numeric < startMileage) {
+            ctx.addIssue({
+              code: "custom",
+              message: `End mileage cannot be lower than the start mileage of ${startMileage}.`,
+            });
+          }
+        }),
+      faults: z.string(),
+      mileageExplanation: z.string(),
+    })
+    .superRefine((data, ctx) => {
+      const change = mileageChange(startMileage, data.endMileage);
+      if (
+        change !== null &&
+        isSillyMileageChange(startMileage, startMileage + change) &&
+        data.mileageExplanation.trim() === ""
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["mileageExplanation"],
+          message: "Enter a reason for the mileage change",
+        });
+      }
+    });
 }
 
 export function LogoffShiftDrawer({
@@ -71,17 +102,31 @@ export function LogoffShiftDrawer({
   const [endMileage, setEndMileage] = useState("");
   const [faults, setFaults] = useState("");
   const [keptAtHome, setKeptAtHome] = useState(false);
+  const [mileageExplanation, setMileageExplanation] = useState("");
 
   useEffect(() => {
     if (!open) {
       setEndMileage("");
       setFaults("");
       setKeptAtHome(false);
+      setMileageExplanation("");
     }
   }, [open]);
 
-  const schema = createLogoffShiftSchema(shift?.startMileage ?? 0);
-  const result = schema.safeParse({ endMileage, faults });
+  const startMileage = shift?.startMileage ?? 0;
+  const change = mileageChange(startMileage, endMileage);
+  const needsExplanation =
+    change !== null &&
+    isSillyMileageChange(startMileage, startMileage + change);
+
+  useEffect(() => {
+    if (!needsExplanation) {
+      setMileageExplanation("");
+    }
+  }, [needsExplanation]);
+
+  const schema = createLogoffShiftSchema(startMileage);
+  const result = schema.safeParse({ endMileage, faults, mileageExplanation });
   const errors = fieldErrors(result);
   const canSubmit = !!shift && result.success;
 
@@ -96,6 +141,9 @@ export function LogoffShiftDrawer({
       endMileage: Number(result.data.endMileage),
       faults: result.data.faults.trim() || undefined,
       bikeKeptAt: keptAtHome ? "home" : "lockup",
+      ...(needsExplanation
+        ? { mileageExplanation: result.data.mileageExplanation.trim() }
+        : {}),
     });
   }
 
@@ -149,6 +197,36 @@ export function LogoffShiftDrawer({
               />
               <FieldError message={errors.endMileage} />
             </div>
+
+            {needsExplanation ? (
+              <Card className="rounded-bb-card border-2 border-bb-warning bg-bb-warning-light py-0 shadow-none dark:bg-bb-warning/20">
+                <CardContent className="space-y-3 p-4">
+                  <p className="text-sm font-semibold text-bb-warning">
+                    This is a change of {change} miles over one shift. A reason
+                    is required.
+                  </p>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="logoff-mileage-explanation"
+                      className="text-bb-gray-700 dark:text-bb-gray-300"
+                    >
+                      Reason for the mileage
+                    </Label>
+                    <Textarea
+                      id="logoff-mileage-explanation"
+                      value={mileageExplanation}
+                      onChange={(event) =>
+                        setMileageExplanation(event.target.value)
+                      }
+                      aria-invalid={!!errors.mileageExplanation}
+                      className="min-h-20 text-base dark:bg-input/30"
+                      placeholder="e.g. Long distance transfer"
+                    />
+                    <FieldError message={errors.mileageExplanation} />
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
 
             <div className="flex items-center justify-between gap-4">
               <div className="space-y-0.5">

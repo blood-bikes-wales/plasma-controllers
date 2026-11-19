@@ -156,6 +156,103 @@ describe("LogoffShiftDrawer", () => {
     });
   });
 
+  it("shows no explanation box and submits for a change of 499", async () => {
+    const user = userEvent.setup();
+    const onLogoff = vi.fn();
+    render(
+      <LogoffShiftDrawer
+        open
+        onOpenChange={() => {}}
+        shift={SHIFT}
+        onLogoff={onLogoff}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("End mileage"), "10319");
+
+    expect(screen.queryByLabelText("Reason for the mileage")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Log off" }));
+
+    expect(onLogoff).toHaveBeenCalledWith("sh1", {
+      endMileage: 10319,
+      faults: undefined,
+      bikeKeptAt: "lockup",
+    });
+  });
+
+  it("requires an explanation for a change of 500 and sends it", async () => {
+    const user = userEvent.setup();
+    const onLogoff = vi.fn();
+    render(
+      <LogoffShiftDrawer
+        open
+        onOpenChange={() => {}}
+        shift={SHIFT}
+        onLogoff={onLogoff}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("End mileage"), "10320");
+
+    expect(
+      screen.getByText(
+        "This is a change of 500 miles over one shift. A reason is required.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log off" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText("Reason for the mileage"), "   ");
+    expect(screen.getByRole("button", { name: "Log off" })).toBeDisabled();
+
+    await user.type(
+      screen.getByLabelText("Reason for the mileage"),
+      "Long distance transfer",
+    );
+    await user.click(screen.getByRole("button", { name: "Log off" }));
+
+    expect(onLogoff).toHaveBeenCalledWith("sh1", {
+      endMileage: 10320,
+      faults: undefined,
+      bikeKeptAt: "lockup",
+      mileageExplanation: "Long distance transfer",
+    });
+  });
+
+  it("hides the explanation box and drops its text when edited back under 500", async () => {
+    const user = userEvent.setup();
+    const onLogoff = vi.fn();
+    render(
+      <LogoffShiftDrawer
+        open
+        onOpenChange={() => {}}
+        shift={SHIFT}
+        onLogoff={onLogoff}
+      />,
+    );
+
+    const endMileage = screen.getByLabelText("End mileage");
+    await user.type(endMileage, "10320");
+    await user.type(
+      screen.getByLabelText("Reason for the mileage"),
+      "Long distance transfer",
+    );
+
+    await user.clear(endMileage);
+    await user.type(endMileage, "10319");
+    expect(screen.queryByLabelText("Reason for the mileage")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Log off" }));
+    expect(onLogoff).toHaveBeenCalledWith("sh1", {
+      endMileage: 10319,
+      faults: undefined,
+      bikeKeptAt: "lockup",
+    });
+
+    await user.clear(endMileage);
+    await user.type(endMileage, "10320");
+    expect(screen.getByLabelText("Reason for the mileage")).toHaveValue("");
+  });
+
   it("calls onOpenChange when cancelled", async () => {
     const user = userEvent.setup();
     const onOpenChange = vi.fn();

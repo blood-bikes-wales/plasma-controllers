@@ -39,7 +39,23 @@ export type LogoffShiftPayload = {
   endMileage: number;
   faults?: string;
   bikeKeptAt: BikeKeptAt;
+  /** Only sent when the mileage change reaches `SILLY_MILEAGE_THRESHOLD`. */
+  mileageExplanation?: string;
 };
+
+/**
+ * A change in mileage over one shift (end - start) at or above this needs an
+ * explanation at logoff. Keep in sync with `OperationalShiftService::SILLY_MILEAGE_THRESHOLD`
+ * in plasma-api.
+ */
+export const SILLY_MILEAGE_THRESHOLD = 500;
+
+export function isSillyMileageChange(
+  startMileage: number,
+  endMileage: number,
+): boolean {
+  return endMileage - startMileage >= SILLY_MILEAGE_THRESHOLD;
+}
 
 type DataList<T> = { data: T[] };
 
