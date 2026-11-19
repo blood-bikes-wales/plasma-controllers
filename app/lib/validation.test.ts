@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { apiFieldErrors, fieldErrors } from "./validation";
+import {
+  apiFieldErrors,
+  fieldErrors,
+  isUkPhoneNumber,
+  UK_PHONE_MESSAGE,
+  ukPhoneSchema,
+} from "./validation";
 
 const schema = z.object({
   name: z.string().min(1, "Enter a name"),
@@ -84,5 +90,42 @@ describe("apiFieldErrors", () => {
         },
       }),
     ).toEqual({ collection: "Choose a place" });
+  });
+});
+
+describe("ukPhoneSchema", () => {
+  it.each([
+    "02920747747",
+    "029 2074 7747",
+    "+44 29 2074 7747",
+    "07700 900101",
+    "(029) 2074-7747",
+    "0800 123 456",
+    "  029 2074 7747  ",
+  ])("accepts %j", (input) => {
+    expect(isUkPhoneNumber(input)).toBe(true);
+    expect(ukPhoneSchema.safeParse(input).success).toBe(true);
+  });
+
+  it.each([
+    "abc",
+    "123",
+    "0292074774712345",
+    "",
+    "029 2074 77AB",
+    "029207477",
+    "029207477471",
+    "2920747747",
+    "+1 202 555 0143",
+  ])("rejects %j with the UK phone message", (input) => {
+    expect(isUkPhoneNumber(input)).toBe(false);
+
+    const result = ukPhoneSchema.safeParse(input);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe(UK_PHONE_MESSAGE);
+  });
+
+  it("returns the trimmed number unchanged otherwise", () => {
+    expect(ukPhoneSchema.parse("  +44 29 2074 7747 ")).toBe("+44 29 2074 7747");
   });
 });

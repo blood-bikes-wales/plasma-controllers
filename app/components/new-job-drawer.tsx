@@ -26,7 +26,7 @@ import {
 import type { PlacesLookup } from "~/lib/places";
 import { recordUsedLocations } from "~/lib/saved-locations";
 import { fetchServiceAreas, type ServiceAreaOption } from "~/lib/service-areas";
-import { apiFieldErrors, fieldErrors } from "~/lib/validation";
+import { apiFieldErrors, fieldErrors, ukPhoneSchema } from "~/lib/validation";
 
 const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
   placeId: z.string().min(1),
@@ -37,7 +37,11 @@ const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
 
 const newJobFormSchema = z.object({
   senderName: z.string().trim().min(1, "Enter the caller's name"),
-  senderPhone: z.string().trim().min(1, "Enter a contact number"),
+  senderPhone: z
+    .string()
+    .trim()
+    .min(1, "Enter a contact number")
+    .pipe(ukPhoneSchema),
   senderOrganisation: z.string(),
   collection: placeLocationSchema
     .nullable()
