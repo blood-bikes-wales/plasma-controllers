@@ -16,6 +16,7 @@ import {
   fetchBikes,
   fetchVolunteers,
   formatShiftStartedAt,
+  type LogoffShiftPayload,
   logoffShift,
   logonShift,
   type RiderOption,
@@ -170,10 +171,7 @@ export default function ShiftsPage() {
     }
   }
 
-  async function handleLogoff(
-    shiftId: string,
-    result: { endMileage: number; faults?: string },
-  ) {
+  async function handleLogoff(shiftId: string, result: LogoffShiftPayload) {
     setError(null);
     try {
       await logoffShift(shiftId, result);

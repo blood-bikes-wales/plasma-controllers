@@ -88,6 +88,7 @@ describe("LogoffShiftDrawer", () => {
     expect(onLogoff).toHaveBeenCalledWith("sh1", {
       endMileage: 9950,
       faults: "Rear brake feels soft",
+      bikeKeptAt: "lockup",
     });
   });
 
@@ -109,6 +110,49 @@ describe("LogoffShiftDrawer", () => {
     expect(onLogoff).toHaveBeenCalledWith("sh1", {
       endMileage: 9950,
       faults: undefined,
+      bikeKeptAt: "lockup",
+    });
+  });
+
+  it("shows the bike location as Lockup by default", () => {
+    render(
+      <LogoffShiftDrawer
+        open
+        onOpenChange={() => {}}
+        shift={SHIFT}
+        onLogoff={() => {}}
+      />,
+    );
+
+    const bikeLocation = screen.getByRole("switch", { name: "Bike location" });
+    expect(bikeLocation).not.toBeChecked();
+    expect(screen.getByText("Lockup")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Kept at home overnight"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("sends bikeKeptAt home when the bike is kept at home overnight", async () => {
+    const user = userEvent.setup();
+    const onLogoff = vi.fn();
+    render(
+      <LogoffShiftDrawer
+        open
+        onOpenChange={() => {}}
+        shift={SHIFT}
+        onLogoff={onLogoff}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("End mileage"), "9950");
+    await user.click(screen.getByRole("switch", { name: "Bike location" }));
+    expect(screen.getByText("Kept at home overnight")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Log off" }));
+
+    expect(onLogoff).toHaveBeenCalledWith("sh1", {
+      endMileage: 9950,
+      faults: undefined,
+      bikeKeptAt: "home",
     });
   });
 
@@ -141,6 +185,8 @@ describe("LogoffShiftDrawer", () => {
     );
 
     await user.type(screen.getByLabelText("End mileage"), "9950");
+    await user.click(screen.getByRole("switch", { name: "Bike location" }));
+    expect(screen.getByRole("switch", { name: "Bike location" })).toBeChecked();
 
     rerender(
       <LogoffShiftDrawer
@@ -160,6 +206,9 @@ describe("LogoffShiftDrawer", () => {
     );
 
     expect(screen.getByLabelText("End mileage")).toHaveValue(null);
+    expect(
+      screen.getByRole("switch", { name: "Bike location" }),
+    ).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Log off" })).toBeDisabled();
   });
 });
