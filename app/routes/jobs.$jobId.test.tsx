@@ -120,3 +120,44 @@ describe("Job detail lifecycle", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("Record collection job number", () => {
+  const allocatedJobId = mockActiveJobs[1].id;
+
+  it("labels the field Job number and not Receipt number", async () => {
+    renderJobDetail({ jobId: allocatedJobId });
+
+    expect(
+      await screen.findByRole("heading", { name: "Record collection" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Job number")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Receipt number")).not.toBeInTheDocument();
+  });
+
+  it("requires a job number", async () => {
+    const user = userEvent.setup();
+    renderJobDetail({ jobId: allocatedJobId });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Record collection" }),
+    );
+
+    expect(await screen.findByText("Enter a job number")).toBeInTheDocument();
+    expect(screen.queryByText(/receipt number/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the job number on the job detail after collection", async () => {
+    const user = userEvent.setup();
+    renderJobDetail({ jobId: allocatedJobId });
+
+    await user.click(await screen.findByLabelText("Contents confirmed"));
+    await user.click(await screen.findByRole("option", { name: "Yes" }));
+    await user.click(screen.getByLabelText("Suitably sealed"));
+    await user.click(await screen.findByRole("option", { name: "No" }));
+    await user.type(screen.getByLabelText("Job number"), "JN-2042");
+    await user.click(screen.getByRole("button", { name: "Record collection" }));
+
+    expect(await screen.findByText("Collected · job JN-2042")).toBeVisible();
+    expect(screen.queryByText(/receipt/i)).not.toBeInTheDocument();
+  });
+});

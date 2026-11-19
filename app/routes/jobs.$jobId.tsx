@@ -47,7 +47,7 @@ const collectSchema = z
       message: "Confirm whether the package is suitably sealed",
     }),
     sealNumber: z.string(),
-    receiptNumber: z.string().trim().min(1, "Enter a receipt number"),
+    receiptNumber: z.string().trim().min(1, "Enter a job number"),
     collectedAt: z.string().trim().min(1, "Enter a collection time"),
   })
   .superRefine((data, ctx) => {
@@ -249,9 +249,9 @@ function CollectJobForm({
       ) : null}
 
       <div className="space-y-2">
-        <Label htmlFor="receipt-number">Receipt number</Label>
+        <Label htmlFor="job-number">Job number</Label>
         <Input
-          id="receipt-number"
+          id="job-number"
           value={receiptNumber}
           onChange={(event) => setReceiptNumber(event.target.value)}
         />
@@ -525,7 +525,7 @@ export default function JobDetailPage() {
           ) : null}
           {job.collectionRecord ? (
             <p className="text-sm text-bb-gray-600 dark:text-bb-gray-300">
-              Collected · receipt {job.collectionRecord.receiptNumber}
+              Collected · job {job.collectionRecord.receiptNumber}
             </p>
           ) : null}
           {job.deliveryRecord ? (
