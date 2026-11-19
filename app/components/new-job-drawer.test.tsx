@@ -237,6 +237,35 @@ describe("NewJobDrawer", () => {
     );
   });
 
+  it("shows the UK phone message and blocks submit on an invalid number", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn();
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    const phone = screen.getByLabelText("Contact number");
+    await user.clear(phone);
+    await user.type(phone, "abc");
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    expect(createJob).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        "Enter a valid UK phone number, for example 029 2074 7747",
+      ),
+    ).toBeInTheDocument();
+    expect(phone).toHaveAttribute("aria-invalid", "true");
+  });
+
   it("clears a field's error as soon as it is edited", async () => {
     const user = userEvent.setup();
 

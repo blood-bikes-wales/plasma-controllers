@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 type ParseFailure = {
   success: false;
   error: { issues: ReadonlyArray<{ path: PropertyKey[]; message: string }> };
@@ -23,6 +25,32 @@ export function fieldErrors<T>(result: ParseResult<T>): Record<string, string> {
   }
   return errors;
 }
+
+export const UK_PHONE_MESSAGE =
+  "Enter a valid UK phone number, for example 029 2074 7747";
+
+/**
+ * A UK phone number as a controller would type it. Spaces, hyphens and round
+ * brackets are ignored and a leading +44 counts as 0. What remains must be 10
+ * or 11 digits starting with 0, so landlines (029 2074 7747) and mobiles
+ * (07700 900101) pass and international numbers do not.
+ *
+ * Mirrors `App\Rules\UkPhoneNumber` in plasma-api. Keep the two in step.
+ */
+export function isUkPhoneNumber(value: string): boolean {
+  let number = value.trim().replace(/[ \-()]/g, "");
+  if (number.startsWith("+44")) {
+    number = `0${number.slice(3)}`;
+  }
+
+  return /^0\d{9,10}$/.test(number);
+}
+
+/** Reusable Zod rule for any phone input on a job form. Not rewritten. */
+export const ukPhoneSchema = z
+  .string()
+  .trim()
+  .refine(isUkPhoneNumber, { message: UK_PHONE_MESSAGE });
 
 const API_FIELD_MAP: Record<string, string> = {
   "sender.name": "senderName",
