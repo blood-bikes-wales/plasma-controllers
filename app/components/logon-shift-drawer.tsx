@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import { z } from "zod";
 
-import { FieldError } from "~/components/field-error";
+import { BikeAssignmentFields } from "~/components/bike-assignment-fields";
 import { SearchableSelectField } from "~/components/searchable-select-field";
 import { Button } from "~/components/ui/button";
-import { Card, CardContent } from "~/components/ui/card";
-import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
 import {
   Sheet,
   SheetContent,
@@ -15,26 +12,20 @@ import {
   SheetHeader,
   SheetTitle,
 } from "~/components/ui/sheet";
-import { Textarea } from "~/components/ui/textarea";
+import {
+  type BikeOption,
+  type RiderOption,
+  useBikeAssignment,
+} from "~/lib/bike-assignment";
 import { fieldErrors } from "~/lib/validation";
 
-/** `areas` are the service-area codes the rider covers; compared with `BikeOption.area`. */
-type RiderOption = { id: string; name: string; areas: string[] };
-
-type BikeOption = {
-  id: string;
-  registration: string;
-  /** Service-area code the bike belongs to. */
-  area?: string;
-  lastRecordedMileage: number;
-};
-
+/** The bike, start mileage and variance reason are only present when a bike was chosen. */
 type LogonShiftInput = {
   riderId: string;
   riderName: string;
-  bikeId: string;
-  bikeRegistration: string;
-  startMileage: number;
+  bikeId?: string;
+  bikeRegistration?: string;
+  startMileage?: number;
   mileageVarianceReason?: string;
 };
 
@@ -49,63 +40,9 @@ type LogonShiftDrawerProps = {
 const SHEET_CONTENT_CLASS =
   "flex w-full max-w-full flex-col gap-0 p-0 data-[side=right]:w-full data-[side=right]:max-w-full sm:max-w-xl data-[side=right]:sm:max-w-xl";
 
-const mileageFieldSchema = z
-  .string()
-  .trim()
-  .min(1, "Enter the start mileage")
-  .superRefine((value, ctx) => {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric) || numeric < 0) {
-      ctx.addIssue({ code: "custom", message: "Enter a valid mileage" });
-    }
-  });
-
-/** Bikes the rider may use: those in any area they cover. No rider, or no areas, means no bikes. */
-function bikesInRiderAreas(
-  bikes: BikeOption[],
-  rider: RiderOption | undefined,
-): BikeOption[] {
-  if (!rider) return [];
-
-  return bikes.filter(
-    (bike) => bike.area !== undefined && rider.areas.includes(bike.area),
-  );
-}
-
-function noBikesMessage(rider: RiderOption | undefined): string {
-  if (!rider) return "Select a rider to see the bikes in their area.";
-  if (rider.areas.length === 0) {
-    return "This rider has no area role in Three Rings, so no bike can be assigned.";
-  }
-  return "No bikes are available in this rider's area.";
-}
-
-/** Requires a variance reason once the start mileage differs from `bike.lastRecordedMileage`. */
-function createLogonShiftSchema(bikes: BikeOption[]) {
-  return z
-    .object({
-      riderId: z.string().min(1, "Select a rider"),
-      bikeId: z.string().min(1, "Select a bike"),
-      startMileage: mileageFieldSchema,
-      mileageVarianceReason: z.string(),
-    })
-    .superRefine((data, ctx) => {
-      const bike = bikes.find((candidate) => candidate.id === data.bikeId);
-      const startMileageValue = Number(data.startMileage);
-      if (
-        bike &&
-        Number.isFinite(startMileageValue) &&
-        startMileageValue !== bike.lastRecordedMileage &&
-        data.mileageVarianceReason.trim() === ""
-      ) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["mileageVarianceReason"],
-          message: "Enter a reason for the mileage difference",
-        });
-      }
-    });
-}
+const logonRiderSchema = z.object({
+  riderId: z.string().min(1, "Select a rider"),
+});
 
 export function LogonShiftDrawer({
   open,
@@ -115,54 +52,28 @@ export function LogonShiftDrawer({
   onLogon,
 }: LogonShiftDrawerProps) {
   const [riderId, setRiderId] = useState<string | null>(null);
-  const [bikeId, setBikeId] = useState<string | null>(null);
-  const [startMileage, setStartMileage] = useState("");
-  const [varianceReason, setVarianceReason] = useState("");
+
+  const selectedRider = riders.find((rider) => rider.id === riderId);
+  const bikeAssignment = useBikeAssignment({
+    bikes,
+    rider: selectedRider,
+    optional: true,
+  });
+  const { reset: resetBikeAssignment } = bikeAssignment;
 
   useEffect(() => {
     if (!open) {
       setRiderId(null);
-      setBikeId(null);
-      setStartMileage("");
-      setVarianceReason("");
+      resetBikeAssignment();
     }
-  }, [open]);
+  }, [open, resetBikeAssignment]);
 
-  const selectedRider = riders.find((rider) => rider.id === riderId);
-  const riderBikes = bikesInRiderAreas(bikes, selectedRider);
-  const selectedBike = riderBikes.find((bike) => bike.id === bikeId);
-  const startMileageValue = Number(startMileage.trim());
-  const hasVariance =
-    !!selectedBike &&
-    startMileage.trim() !== "" &&
-    Number.isFinite(startMileageValue) &&
-    startMileageValue !== selectedBike.lastRecordedMileage;
-
-  const schema = createLogonShiftSchema(riderBikes);
-  const result = schema.safeParse({
-    riderId: riderId ?? "",
-    bikeId: selectedBike?.id ?? "",
-    startMileage,
-    mileageVarianceReason: varianceReason,
-  });
-  const errors = fieldErrors(result);
+  const riderResult = logonRiderSchema.safeParse({ riderId: riderId ?? "" });
+  const errors = fieldErrors(riderResult);
+  const canSubmit = riderResult.success && bikeAssignment.isValid;
 
   function handleClose() {
     onOpenChange(false);
-  }
-
-  /**
-   * Choosing a different bike replaces the start mileage with that bike's last
-   * recorded figure (and drops any variance reason written for the old bike);
-   * clearing the bike empties it. Re-choosing the same bike keeps any edit.
-   */
-  function handleBikeChange(nextBikeId: string | null) {
-    if (nextBikeId === bikeId) return;
-
-    const nextBike = bikes.find((bike) => bike.id === nextBikeId);
-    setBikeId(nextBikeId);
-    setStartMileage(nextBike ? String(nextBike.lastRecordedMileage) : "");
-    setVarianceReason("");
   }
 
   /**
@@ -174,33 +85,18 @@ export function LogonShiftDrawer({
     setRiderId(nextRiderId);
     if (nextRiderId === null) return;
 
-    const nextRider = riders.find((rider) => rider.id === nextRiderId);
-    const stillValid = bikesInRiderAreas(bikes, nextRider).some(
-      (bike) => bike.id === bikeId,
+    bikeAssignment.keepBikeFor(
+      riders.find((rider) => rider.id === nextRiderId),
     );
-    if (!stillValid) handleBikeChange(null);
   }
 
   function handleSubmit() {
-    if (!result.success) return;
-
-    const rider = riders.find(
-      (candidate) => candidate.id === result.data.riderId,
-    );
-    const bike = riderBikes.find(
-      (candidate) => candidate.id === result.data.bikeId,
-    );
-    if (!rider || !bike) return;
+    if (!canSubmit || !selectedRider) return;
 
     onLogon({
-      riderId: rider.id,
-      riderName: rider.name,
-      bikeId: bike.id,
-      bikeRegistration: bike.registration,
-      startMileage: Number(result.data.startMileage),
-      mileageVarianceReason: hasVariance
-        ? result.data.mileageVarianceReason.trim()
-        : undefined,
+      riderId: selectedRider.id,
+      riderName: selectedRider.name,
+      ...bikeAssignment.assignment,
     });
   }
 
@@ -212,8 +108,8 @@ export function LogonShiftDrawer({
             Log on rider
           </SheetTitle>
           <SheetDescription>
-            Record who is starting a shift, which bike they are using and the
-            starting mileage.
+            Record who is starting a shift. The bike and its starting mileage
+            can be added now or assigned later.
           </SheetDescription>
         </SheetHeader>
 
@@ -233,77 +129,19 @@ export function LogonShiftDrawer({
               emptyMessage="Every rider is already on shift."
             />
 
-            <SearchableSelectField
-              id="logon-bike"
-              label="Bike"
-              value={bikeId}
-              onChange={handleBikeChange}
-              options={riderBikes.map((bike) => ({
-                value: bike.id,
-                label: bike.registration,
-              }))}
-              placeholder="Search or select bike…"
-              error={errors.bikeId}
-              emptyMessage={noBikesMessage(selectedRider)}
+            <BikeAssignmentFields
+              idPrefix="logon"
+              state={bikeAssignment}
+              rider={selectedRider}
+              bikePlaceholder="Optional: search or select bike…"
             />
-
-            <div className="space-y-2">
-              <Label
-                htmlFor="logon-start-mileage"
-                className="text-bb-gray-700 dark:text-bb-gray-300"
-              >
-                Start mileage
-              </Label>
-              <Input
-                id="logon-start-mileage"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={startMileage}
-                onChange={(event) => setStartMileage(event.target.value)}
-                aria-invalid={!!errors.startMileage}
-                className="h-11 text-base dark:bg-input/30"
-                placeholder="e.g. 15234"
-              />
-              <FieldError message={errors.startMileage} />
-            </div>
-
-            {hasVariance ? (
-              <Card className="rounded-bb-card border-2 border-bb-warning bg-bb-warning-light py-0 shadow-none dark:bg-bb-warning/20">
-                <CardContent className="space-y-3 p-4">
-                  <p className="text-sm font-semibold text-bb-warning">
-                    Start mileage does not match this bike's last recorded
-                    mileage. A reason is required.
-                  </p>
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="logon-variance-reason"
-                      className="text-bb-gray-700 dark:text-bb-gray-300"
-                    >
-                      Reason for the mileage difference
-                    </Label>
-                    <Textarea
-                      id="logon-variance-reason"
-                      value={varianceReason}
-                      onChange={(event) =>
-                        setVarianceReason(event.target.value)
-                      }
-                      aria-invalid={!!errors.mileageVarianceReason}
-                      className="min-h-20 text-base dark:bg-input/30"
-                      placeholder="e.g. Odometer reset after a repair"
-                    />
-                    <FieldError message={errors.mileageVarianceReason} />
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null}
           </div>
 
           <SheetFooter className="shrink-0 gap-3 border-t border-bb-gray-100 bg-bb-white px-5 py-4 dark:border-bb-gray-700 dark:bg-card">
             <Button
               type="button"
               className="h-12 w-full rounded-bb-button text-base font-bold"
-              disabled={!result.success}
+              disabled={!canSubmit}
               onClick={handleSubmit}
             >
               Log on

@@ -43,6 +43,17 @@ export const mockMikeShift: ActiveShift = {
   startedAt: "2026-08-28T08:15:00.000Z",
 };
 
+/** Sarah Jones (area E) is on duty with no bike yet. */
+export const mockSarahBikelessShift: ActiveShift = {
+  id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  riderId: "100001",
+  riderName: "Sarah Jones",
+  bikeId: null,
+  bikeRegistration: null,
+  startMileage: null,
+  startedAt: "2026-08-28T09:00:00.000Z",
+};
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -50,8 +61,11 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-export function stubShiftsFetch(user: AuthUser = mockAuthUser) {
-  const shifts: ActiveShift[] = [{ ...mockMikeShift }];
+export function stubShiftsFetch(
+  user: AuthUser = mockAuthUser,
+  initialShifts: ActiveShift[] = [mockMikeShift],
+) {
+  const shifts: ActiveShift[] = initialShifts.map((shift) => ({ ...shift }));
   const bikes: Bike[] = mockBikes.map((bike) => ({ ...bike }));
   const riders: RiderOption[] = mockRiders.map((rider) => ({ ...rider }));
 
@@ -78,8 +92,8 @@ export function stubShiftsFetch(user: AuthUser = mockAuthUser) {
     if (url.includes("/shifts/logon") && method === "POST") {
       const payload = JSON.parse(String(init?.body ?? "{}")) as {
         riderId: string;
-        bikeId: string;
-        startMileage: number;
+        bikeId?: string;
+        startMileage?: number;
         mileageVarianceReason?: string;
       };
       const rider = riders.find(
@@ -90,9 +104,9 @@ export function stubShiftsFetch(user: AuthUser = mockAuthUser) {
         id: crypto.randomUUID(),
         riderId: payload.riderId,
         riderName: rider?.name ?? "Unknown",
-        bikeId: payload.bikeId,
-        bikeRegistration: bike?.registration ?? "",
-        startMileage: payload.startMileage,
+        bikeId: payload.bikeId ?? null,
+        bikeRegistration: payload.bikeId ? (bike?.registration ?? "") : null,
+        startMileage: payload.startMileage ?? null,
         startedAt: new Date().toISOString(),
         mileageVarianceReason: payload.mileageVarianceReason ?? null,
       };
@@ -100,11 +114,30 @@ export function stubShiftsFetch(user: AuthUser = mockAuthUser) {
       return jsonResponse(shift, 201);
     }
 
+    const assignMatch = url.match(/\/shifts\/([^/]+)\/bike/);
+    if (assignMatch && method === "POST") {
+      const payload = JSON.parse(String(init?.body ?? "{}")) as {
+        bikeId: string;
+        startMileage: number;
+        mileageVarianceReason?: string;
+      };
+      const shift = shifts.find((candidate) => candidate.id === assignMatch[1]);
+      const bike = bikes.find((candidate) => candidate.id === payload.bikeId);
+      if (!shift || !bike) {
+        return jsonResponse({ message: "Not found" }, 404);
+      }
+      shift.bikeId = bike.id;
+      shift.bikeRegistration = bike.registration;
+      shift.startMileage = payload.startMileage;
+      shift.mileageVarianceReason = payload.mileageVarianceReason ?? null;
+      return jsonResponse(shift);
+    }
+
     const logoffMatch = url.match(/\/shifts\/([^/]+)\/logoff/);
     if (logoffMatch && method === "POST") {
       const shiftId = logoffMatch[1];
       const payload = JSON.parse(String(init?.body ?? "{}")) as {
-        endMileage: number;
+        endMileage?: number;
       };
       const index = shifts.findIndex((shift) => shift.id === shiftId);
       if (index === -1) {
@@ -112,7 +145,7 @@ export function stubShiftsFetch(user: AuthUser = mockAuthUser) {
       }
       const [shift] = shifts.splice(index, 1);
       const bike = bikes.find((candidate) => candidate.id === shift.bikeId);
-      if (bike) {
+      if (bike && payload.endMileage !== undefined) {
         bike.lastRecordedMileage = payload.endMileage;
       }
       return jsonResponse(shift);

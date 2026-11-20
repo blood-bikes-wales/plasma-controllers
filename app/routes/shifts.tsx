@@ -1,15 +1,18 @@
 import { Clock, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AssignBikeDrawer } from "~/components/assign-bike-drawer";
 import { LogoffShiftDrawer } from "~/components/logoff-shift-drawer";
 import { LogonShiftDrawer } from "~/components/logon-shift-drawer";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { useAuth } from "~/lib/auth";
+import type { BikeAssignment } from "~/lib/bike-assignment";
 import { Role } from "~/lib/roles";
 import {
   type ActiveShift,
+  assignShiftBike,
   type Bike,
   errorMessage,
   fetchActiveShifts,
@@ -34,10 +37,12 @@ function ActiveShiftCard({
   shift,
   canManage,
   onLogoff,
+  onAssignBike,
 }: {
   shift: ActiveShift;
   canManage: boolean;
   onLogoff: () => void;
+  onAssignBike: () => void;
 }) {
   return (
     <Card className="h-full rounded-bb-card border-0 bg-bb-white py-5 shadow-none ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700">
@@ -52,18 +57,24 @@ function ActiveShiftCard({
         </div>
 
         <div className="space-y-1 text-sm text-bb-gray-500 dark:text-bb-gray-400">
-          <p>
-            Bike{" "}
-            <span className="font-mono font-medium text-bb-gray-900 dark:text-bb-gray-100">
-              {shift.bikeRegistration}
-            </span>
-          </p>
-          <p>Start mileage: {shift.startMileage}</p>
-          {shift.mileageVarianceReason ? (
-            <p className="text-bb-warning">
-              Mileage variance: {shift.mileageVarianceReason}
-            </p>
-          ) : null}
+          {shift.bikeRegistration ? (
+            <>
+              <p>
+                Bike{" "}
+                <span className="font-mono font-medium text-bb-gray-900 dark:text-bb-gray-100">
+                  {shift.bikeRegistration}
+                </span>
+              </p>
+              <p>Start mileage: {shift.startMileage}</p>
+              {shift.mileageVarianceReason ? (
+                <p className="text-bb-warning">
+                  Mileage variance: {shift.mileageVarianceReason}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p>No bike assigned</p>
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-bb-gray-100 pt-4 dark:border-bb-gray-700">
@@ -72,15 +83,28 @@ function ActiveShiftCard({
             <span>Since {formatShiftStartedAt(shift.startedAt)}</span>
           </div>
           {canManage ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 px-3"
-              onClick={onLogoff}
-            >
-              Log off
-            </Button>
+            <div className="flex items-center gap-2">
+              {shift.bikeId === null ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 px-3"
+                  onClick={onAssignBike}
+                >
+                  Assign bike
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 px-3"
+                onClick={onLogoff}
+              >
+                Log off
+              </Button>
+            </div>
           ) : null}
         </div>
       </CardContent>
@@ -99,6 +123,7 @@ export default function ShiftsPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLogonOpen, setIsLogonOpen] = useState(false);
   const [logoffShiftId, setLogoffShiftId] = useState<string | null>(null);
+  const [assignShiftId, setAssignShiftId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const [nextShifts, nextBikes, nextRiders] = await Promise.all([
@@ -138,7 +163,12 @@ export default function ShiftsPage() {
     [activeShifts],
   );
   const onShiftBikeIds = useMemo(
-    () => new Set(activeShifts.map((shift) => shift.bikeId)),
+    () =>
+      new Set(
+        activeShifts.flatMap((shift) =>
+          shift.bikeId === null ? [] : [shift.bikeId],
+        ),
+      ),
     [activeShifts],
   );
 
@@ -149,11 +179,17 @@ export default function ShiftsPage() {
   const shiftToLogoff = activeShifts.find(
     (shift) => shift.id === logoffShiftId,
   );
+  const shiftToAssign = activeShifts.find(
+    (shift) => shift.id === assignShiftId,
+  );
+  const assignRider = riders.find(
+    (rider) => rider.id === shiftToAssign?.riderId,
+  );
 
   async function handleLogon(input: {
     riderId: string;
-    bikeId: string;
-    startMileage: number;
+    bikeId?: string;
+    startMileage?: number;
     mileageVarianceReason?: string;
   }) {
     setError(null);
@@ -171,16 +207,34 @@ export default function ShiftsPage() {
     }
   }
 
+  async function handleAssignBike(shiftId: string, assignment: BikeAssignment) {
+    setError(null);
+    try {
+      const updated = await assignShiftBike(shiftId, {
+        bikeId: assignment.bikeId,
+        startMileage: assignment.startMileage,
+        mileageVarianceReason: assignment.mileageVarianceReason,
+      });
+      setActiveShifts((current) =>
+        current.map((item) => (item.id === shiftId ? updated : item)),
+      );
+      setAssignShiftId(null);
+    } catch (caught: unknown) {
+      setError(errorMessage(caught, "Unable to assign the bike."));
+    }
+  }
+
   async function handleLogoff(shiftId: string, result: LogoffShiftPayload) {
     setError(null);
     try {
       await logoffShift(shiftId, result);
       const shift = activeShifts.find((item) => item.id === shiftId);
-      if (shift) {
+      if (shift?.bikeId && result.endMileage !== undefined) {
+        const { endMileage } = result;
         setBikes((current) =>
           current.map((bike) =>
             bike.id === shift.bikeId
-              ? { ...bike, lastRecordedMileage: result.endMileage }
+              ? { ...bike, lastRecordedMileage: endMileage }
               : bike,
           ),
         );
@@ -238,6 +292,7 @@ export default function ShiftsPage() {
                     shift={shift}
                     canManage={canManage}
                     onLogoff={() => setLogoffShiftId(shift.id)}
+                    onAssignBike={() => setAssignShiftId(shift.id)}
                   />
                 </li>
               ))}
@@ -256,6 +311,20 @@ export default function ShiftsPage() {
         riders={availableRiders}
         bikes={availableBikes}
         onLogon={handleLogon}
+      />
+      <AssignBikeDrawer
+        open={assignShiftId !== null}
+        onOpenChange={(open) => {
+          if (!open) setAssignShiftId(null);
+        }}
+        shift={
+          shiftToAssign
+            ? { id: shiftToAssign.id, riderName: shiftToAssign.riderName }
+            : undefined
+        }
+        rider={assignRider}
+        bikes={availableBikes}
+        onAssign={handleAssignBike}
       />
       <LogoffShiftDrawer
         open={logoffShiftId !== null}

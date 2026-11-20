@@ -18,15 +18,23 @@ export type ActiveShift = {
   id: string;
   riderId: string;
   riderName: string;
-  bikeId: string;
-  bikeRegistration: string;
-  startMileage: number;
+  /** Null while the rider is on duty without a bike. */
+  bikeId: string | null;
+  bikeRegistration: string | null;
+  startMileage: number | null;
   startedAt: string;
   mileageVarianceReason?: string | null;
 };
 
+/** Send `bikeId` and `startMileage` together, or neither to log on without a bike. */
 export type LogonShiftPayload = {
   riderId: string;
+  bikeId?: string;
+  startMileage?: number;
+  mileageVarianceReason?: string;
+};
+
+export type AssignShiftBikePayload = {
   bikeId: string;
   startMileage: number;
   mileageVarianceReason?: string;
@@ -36,9 +44,10 @@ export type LogonShiftPayload = {
 export type BikeKeptAt = "lockup" | "home";
 
 export type LogoffShiftPayload = {
-  endMileage: number;
+  /** Omitted, with `bikeKeptAt`, when the shift never had a bike. */
+  endMileage?: number;
   faults?: string;
-  bikeKeptAt: BikeKeptAt;
+  bikeKeptAt?: BikeKeptAt;
   /** Only sent when the mileage change reaches `SILLY_MILEAGE_THRESHOLD`. */
   mileageExplanation?: string;
 };
@@ -78,6 +87,16 @@ export async function logonShift(
   payload: LogonShiftPayload,
 ): Promise<ActiveShift> {
   return apiFetch<ActiveShift>("/shifts/logon", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function assignShiftBike(
+  shiftId: string,
+  payload: AssignShiftBikePayload,
+): Promise<ActiveShift> {
+  return apiFetch<ActiveShift>(`/shifts/${shiftId}/bike`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
