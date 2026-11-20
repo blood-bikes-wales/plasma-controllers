@@ -92,6 +92,31 @@ describe("ShiftsPage", () => {
     expect(screen.getByText("1 on duty")).toBeInTheDocument();
   });
 
+  it("shows the shift type badge next to On duty when the shift has one", async () => {
+    renderShiftsPage({
+      shifts: [{ ...mockMikeShift, shiftType: "Milk" }],
+    });
+    await waitForShiftsLoaded();
+
+    const badge = screen.getByText("Milk");
+    expect(badge).toBeInTheDocument();
+    expect(badge).toHaveTextContent("Shift type: Milk");
+    expect(screen.getByText("On duty")).toBeInTheDocument();
+  });
+
+  it("shows no shift type badge when the shift type is null, missing or blank", async () => {
+    renderShiftsPage({
+      shifts: [
+        { ...mockMikeShift, shiftType: null },
+        { ...mockSarahBikelessShift, shiftType: "  " },
+      ],
+    });
+    await waitForShiftsLoaded();
+
+    expect(screen.getAllByText("On duty")).toHaveLength(2);
+    expect(screen.queryByText(/Shift type/)).not.toBeInTheDocument();
+  });
+
   it("lets a coordinator log on a rider with a bike and mileage", async () => {
     const user = userEvent.setup();
     renderShiftsPage();
