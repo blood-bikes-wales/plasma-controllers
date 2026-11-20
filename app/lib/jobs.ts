@@ -276,3 +276,81 @@ export function fromDateTimeLocalValue(value: string): string | undefined {
 export function defaultDateTimeLocalValue(): string {
   return toDateTimeLocalValue(new Date().toISOString());
 }
+
+/**
+ * A relay is the parent that was split into legs, or one of its legs. Relay
+ * jobs span several riders and possibly several days, so they are not tied to
+ * a single day. Everything else is a "normal" job.
+ */
+export function isRelayJob(
+  job: Pick<DeliveryJob, "isRelay" | "parentJobId" | "legNumber" | "legs">,
+): boolean {
+  return (
+    job.isRelay === true ||
+    Boolean(job.parentJobId) ||
+    (job.legNumber !== null && job.legNumber !== undefined) ||
+    (job.legs?.length ?? 0) > 0
+  );
+}
+
+/**
+ * The day a normal job is collected and delivered on, as an ISO timestamp
+ * (only its local calendar day is used), or null when unknown. Single source
+ * of truth for the day; change it here if the day ever comes from somewhere
+ * other than the created date.
+ */
+export function getJobDate(job: Pick<DeliveryJob, "createdAt">): string | null {
+  return job.createdAt;
+}
+
+/** Current local time as an `<input type="time">` value (HH:mm). */
+export function defaultTimeValue(): string {
+  return toDateTimeLocalValue(new Date().toISOString()).slice(11);
+}
+
+/**
+ * Combines the local calendar day of `dayIso` with a `HH:mm` time into an ISO
+ * timestamp. Returns undefined when either part is missing or invalid.
+ */
+export function combineDayAndTime(
+  dayIso: string | null | undefined,
+  time: string,
+): string | undefined {
+  const match = /^(\d{2}):(\d{2})(?::\d{2})?$/.exec(time.trim());
+  if (!dayIso || !match) {
+    return undefined;
+  }
+
+  const day = new Date(dayIso);
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (Number.isNaN(day.getTime()) || hours > 23 || minutes > 59) {
+    return undefined;
+  }
+
+  return new Date(
+    day.getFullYear(),
+    day.getMonth(),
+    day.getDate(),
+    hours,
+    minutes,
+  ).toISOString();
+}
+
+/** Human label for the fixed day, e.g. "Sat 29 Aug". */
+export function formatJobDay(dayIso: string | null | undefined): string {
+  if (!dayIso) {
+    return "";
+  }
+
+  const day = new Date(dayIso);
+  if (Number.isNaN(day.getTime())) {
+    return "";
+  }
+
+  return day.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
