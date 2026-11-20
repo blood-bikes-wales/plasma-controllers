@@ -1,5 +1,5 @@
 import { ArrowLeft, CalendarCheck, Phone } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { z } from "zod";
 import { AllocateJobForm } from "~/components/allocate-job-form";
@@ -21,12 +21,15 @@ import { useAuth } from "~/lib/auth";
 import { canManageJobs } from "~/lib/capabilities";
 import {
   allowedActionsForJob,
+  type CollectJobPayload,
   cancelJob,
+  collectionRecordText,
   combineDayAndTime,
   type DeliverJobPayload,
   type DeliveryJob,
   defaultDateTimeLocalValue,
   defaultTimeValue,
+  deliveryRecordText,
   displayJobReference,
   fetchJobById,
   formatJobCreatedAt,
@@ -36,7 +39,6 @@ import {
   getJobDate,
   isRelayJob,
   isStaleJobError,
-  type JobDeliveryRecord,
   type JobMother,
   jobErrorMessage,
   needsMotherContact,
@@ -48,6 +50,8 @@ import {
 } from "~/lib/jobs";
 import { addressWithPostcode } from "~/lib/postcode";
 import { type ActiveShift, fetchActiveShifts } from "~/lib/shifts";
+import { useCommitOnComplete } from "~/lib/use-commit-on-complete";
+import { useCommitTriggers, type Validation } from "~/lib/use-commit-triggers";
 import { cn } from "~/lib/utils";
 import { fieldErrors } from "~/lib/validation";
 
@@ -259,6 +263,87 @@ function recordedAtToIso(jobDate: string | null, value: string) {
     : fromDateTimeLocalValue(value);
 }
 
+type CollectValues = {
+  contentsConfirmed: string | null;
+  receiptNumber: string;
+  collectedAt: string;
+};
+
+/** The existing collection rules, run on the form's values. */
+function validateCollect(
+  values: CollectValues,
+  jobDate: string | null,
+): Validation<CollectJobPayload> {
+  const parsed = collectSchema.safeParse({
+    contentsConfirmed: values.contentsConfirmed ?? "",
+    receiptNumber: values.receiptNumber,
+    collectedAt: values.collectedAt,
+  });
+  if (!parsed.success) {
+    return { errors: fieldErrors(parsed) };
+  }
+
+  const collectedIso = recordedAtToIso(jobDate, parsed.data.collectedAt);
+  if (!collectedIso) {
+    return { errors: { collectedAt: "Enter a valid collection time" } };
+  }
+
+  return {
+    payload: {
+      contentsConfirmed: parsed.data.contentsConfirmed === "yes",
+      receiptNumber: parsed.data.receiptNumber,
+      collectedAt: collectedIso,
+    },
+  };
+}
+
+function withoutError(errors: Record<string, string>, field: string) {
+  const { [field]: _removed, ...rest } = errors;
+  return rest;
+}
+
+/**
+ * What a record form says under its fields: when it saves (there is no
+ * button), the always-rendered live region for "Saving…" (empty when idle,
+ * never display:none, so screen readers have something to announce into) and
+ * the failure, as a `role="alert"` paragraph that is announced when it appears.
+ */
+function RecordFormFooter({
+  hintId,
+  isCommitting,
+  error,
+}: {
+  hintId: string;
+  isCommitting: boolean;
+  error: string | null;
+}) {
+  return (
+    <div className="space-y-2">
+      <p id={hintId} className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
+        Records when you press Enter or leave the form once everything is filled
+        in. This cannot be undone.
+      </p>
+      <p
+        role="status"
+        className="min-h-5 text-sm font-medium text-bb-gray-600 dark:text-bb-gray-300"
+      >
+        {isCommitting ? "Saving…" : null}
+      </p>
+      {error ? (
+        <p role="alert" className="text-sm font-medium text-bb-error">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Records the collection with no button: see `useCommitTriggers` for exactly
+ * when. `onSubmit` must reject when the API refuses; the error then shows
+ * under the form, the values stay, and the next Enter (or leave after an edit)
+ * tries again. The fieldset disables every field while the request runs.
+ */
 function CollectJobForm({
   jobDate,
   isSubmitting,
@@ -266,100 +351,131 @@ function CollectJobForm({
 }: {
   jobDate: string | null;
   isSubmitting: boolean;
-  onSubmit: (payload: {
-    contentsConfirmed: boolean;
-    receiptNumber: string;
-    collectedAt: string;
-  }) => Promise<void>;
+  onSubmit: (payload: CollectJobPayload) => Promise<void>;
 }) {
-  const [contentsConfirmed, setContentsConfirmed] = useState<string | null>(
-    null,
-  );
-  const [receiptNumber, setReceiptNumber] = useState("");
-  const [collectedAt, setCollectedAt] = useState(() =>
-    defaultRecordedAt(jobDate),
-  );
+  const hintId = useId();
+  const [values, setValues] = useState<CollectValues>(() => ({
+    contentsConfirmed: null,
+    receiptNumber: "",
+    collectedAt: defaultRecordedAt(jobDate),
+  }));
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setErrors({});
+  const committer = useCommitOnComplete<CollectJobPayload>({
+    commit: onSubmit,
+    errorMessage: (caught) =>
+      jobErrorMessage(caught, "Unable to record this collection."),
+  });
+  const triggers = useCommitTriggers({
+    values,
+    validate: (current) => validateCollect(current, jobDate),
+    committer,
+    onValidation: setErrors,
+  });
 
-    const parsed = collectSchema.safeParse({
-      contentsConfirmed: contentsConfirmed ?? "",
-      receiptNumber,
-      collectedAt,
-    });
-
-    const nextErrors = fieldErrors(parsed);
-    if (!parsed.success) {
-      setErrors(nextErrors);
-      return;
-    }
-
-    const collectedIso = recordedAtToIso(jobDate, parsed.data.collectedAt);
-    if (!collectedIso) {
-      setErrors({ collectedAt: "Enter a valid collection time" });
-      return;
-    }
-
-    await onSubmit({
-      contentsConfirmed: parsed.data.contentsConfirmed === "yes",
-      receiptNumber: parsed.data.receiptNumber,
-      collectedAt: collectedIso,
-    });
+  function change(next: CollectValues, field: keyof CollectValues) {
+    setErrors((current) => withoutError(current, field));
+    setValues(next);
   }
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
-      <SearchableSelectField
-        id="contents-confirmed"
-        label="Contents confirmed"
-        value={contentsConfirmed}
-        onChange={setContentsConfirmed}
-        options={[
-          { value: "yes", label: "Yes" },
-          { value: "no", label: "No" },
-        ]}
-        placeholder="Select yes or no…"
-        error={errors.contentsConfirmed}
-      />
-
-      <div className="space-y-2">
-        <Label htmlFor="job-number">Job number</Label>
-        <Input
-          id="job-number"
-          value={receiptNumber}
-          onChange={(event) => setReceiptNumber(event.target.value)}
+    <form
+      noValidate
+      className="space-y-4"
+      aria-describedby={hintId}
+      onSubmit={(event) => event.preventDefault()}
+      {...triggers.formProps}
+    >
+      <fieldset
+        disabled={committer.isCommitting || isSubmitting}
+        className="m-0 min-w-0 space-y-4 border-0 p-0"
+      >
+        <SearchableSelectField
+          id="contents-confirmed"
+          label="Contents confirmed"
+          value={values.contentsConfirmed}
+          onChange={(next) => {
+            const nextValues = { ...values, contentsConfirmed: next };
+            change(nextValues, "contentsConfirmed");
+            triggers.commitAfterGesture(nextValues);
+          }}
+          options={[
+            { value: "yes", label: "Yes" },
+            { value: "no", label: "No" },
+          ]}
+          placeholder="Select yes or no…"
+          error={errors.contentsConfirmed}
         />
-        <FieldError message={errors.receiptNumber} />
-      </div>
 
-      <RecordedAtField
-        id="collected-at"
-        label="Collection time"
-        jobDate={jobDate}
-        value={collectedAt}
-        onChange={setCollectedAt}
-        error={errors.collectedAt}
+        <div className="space-y-2">
+          <Label htmlFor="job-number">Job number</Label>
+          <Input
+            id="job-number"
+            value={values.receiptNumber}
+            onChange={(event) =>
+              change(
+                { ...values, receiptNumber: event.target.value },
+                "receiptNumber",
+              )
+            }
+          />
+          <FieldError message={errors.receiptNumber} />
+        </div>
+
+        <RecordedAtField
+          id="collected-at"
+          label="Collection time"
+          jobDate={jobDate}
+          value={values.collectedAt}
+          onChange={(next) =>
+            change({ ...values, collectedAt: next }, "collectedAt")
+          }
+          error={errors.collectedAt}
+        />
+      </fieldset>
+
+      <RecordFormFooter
+        hintId={hintId}
+        isCommitting={committer.isCommitting}
+        error={committer.error}
       />
-
-      <Button type="submit" disabled={isSubmitting}>
-        Record collection
-      </Button>
     </form>
   );
 }
 
-/** `recipient` is null when nobody received the delivery. */
-function deliveryRecordText(record: JobDeliveryRecord) {
-  if (record.noRecipient) {
-    return "Delivered, no recipient";
+type DeliverValues = {
+  recipient: string;
+  noRecipient: boolean;
+  deliveredAt: string;
+};
+
+/** The existing delivery rules, run on the form's values. */
+function validateDeliver(
+  values: DeliverValues,
+  jobDate: string | null,
+): Validation<DeliverJobPayload> {
+  const parsed = deliverSchema.safeParse(values);
+  if (!parsed.success) {
+    return { errors: fieldErrors(parsed) };
   }
 
-  return record.recipient ? `Delivered to ${record.recipient}` : "Delivered";
+  const deliveredIso = recordedAtToIso(jobDate, parsed.data.deliveredAt);
+  if (!deliveredIso) {
+    return { errors: { deliveredAt: "Enter a valid delivery time" } };
+  }
+
+  return {
+    payload: parsed.data.noRecipient
+      ? { noRecipient: true, deliveredAt: deliveredIso }
+      : {
+          recipient: parsed.data.recipient,
+          noRecipient: false,
+          deliveredAt: deliveredIso,
+        },
+  };
 }
 
+/** Records the delivery with no button, like `CollectJobForm`. */
 function DeliverJobForm({
   jobDate,
   isSubmitting,
@@ -369,91 +485,102 @@ function DeliverJobForm({
   isSubmitting: boolean;
   onSubmit: (payload: DeliverJobPayload) => Promise<void>;
 }) {
-  const [recipient, setRecipient] = useState("");
-  const [noRecipient, setNoRecipient] = useState(false);
-  const [deliveredAt, setDeliveredAt] = useState(() =>
-    defaultRecordedAt(jobDate),
-  );
+  const hintId = useId();
+  const [values, setValues] = useState<DeliverValues>(() => ({
+    recipient: "",
+    noRecipient: false,
+    deliveredAt: defaultRecordedAt(jobDate),
+  }));
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setErrors({});
+  const committer = useCommitOnComplete<DeliverJobPayload>({
+    commit: onSubmit,
+    errorMessage: (caught) =>
+      jobErrorMessage(caught, "Unable to record this delivery."),
+  });
+  const triggers = useCommitTriggers({
+    values,
+    validate: (current) => validateDeliver(current, jobDate),
+    committer,
+    onValidation: setErrors,
+  });
 
-    const parsed = deliverSchema.safeParse({
-      recipient,
-      noRecipient,
-      deliveredAt,
-    });
-    const nextErrors = fieldErrors(parsed);
-    if (!parsed.success) {
-      setErrors(nextErrors);
-      return;
-    }
-
-    const deliveredIso = recordedAtToIso(jobDate, parsed.data.deliveredAt);
-    if (!deliveredIso) {
-      setErrors({ deliveredAt: "Enter a valid delivery time" });
-      return;
-    }
-
-    await onSubmit(
-      parsed.data.noRecipient
-        ? { noRecipient: true, deliveredAt: deliveredIso }
-        : {
-            recipient: parsed.data.recipient,
-            noRecipient: false,
-            deliveredAt: deliveredIso,
-          },
-    );
+  function change(next: DeliverValues, field: keyof DeliverValues) {
+    setErrors((current) => withoutError(current, field));
+    setValues(next);
   }
 
   function handleNoRecipientChange(checked: boolean) {
-    setNoRecipient(checked);
+    // Ticking the box says nobody received it, so a typed recipient goes.
+    const nextValues = {
+      ...values,
+      noRecipient: checked,
+      recipient: checked ? "" : values.recipient,
+    };
+    change(nextValues, "noRecipient");
     if (checked) {
-      setRecipient("");
-      setErrors(({ recipient: _cleared, ...rest }) => rest);
+      setErrors((current) => withoutError(current, "recipient"));
     }
+    triggers.commitAfterGesture(nextValues);
   }
 
   return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
-      <div className="space-y-2">
-        <Label htmlFor="recipient">Recipient</Label>
-        <Input
-          id="recipient"
-          value={recipient}
-          disabled={noRecipient}
-          onChange={(event) => setRecipient(event.target.value)}
-        />
-        <FieldError message={errors.recipient} />
-        <label
-          htmlFor="no-recipient"
-          className="flex min-h-11 items-center gap-3 rounded-xl px-1 text-base font-medium text-bb-gray-900 dark:text-bb-gray-100"
-        >
-          <input
-            id="no-recipient"
-            type="checkbox"
-            className="size-5 shrink-0 rounded border-bb-gray-300 accent-bb-cta"
-            checked={noRecipient}
-            onChange={(event) => handleNoRecipientChange(event.target.checked)}
+    <form
+      noValidate
+      className="space-y-4"
+      aria-describedby={hintId}
+      onSubmit={(event) => event.preventDefault()}
+      {...triggers.formProps}
+    >
+      <fieldset
+        disabled={committer.isCommitting || isSubmitting}
+        className="m-0 min-w-0 space-y-4 border-0 p-0"
+      >
+        <div className="space-y-2">
+          <Label htmlFor="recipient">Recipient</Label>
+          <Input
+            id="recipient"
+            value={values.recipient}
+            disabled={values.noRecipient}
+            onChange={(event) =>
+              change({ ...values, recipient: event.target.value }, "recipient")
+            }
           />
-          No person or recipient
-        </label>
-      </div>
+          <FieldError message={errors.recipient} />
+          <label
+            htmlFor="no-recipient"
+            className="flex min-h-11 items-center gap-3 rounded-xl px-1 text-base font-medium text-bb-gray-900 dark:text-bb-gray-100"
+          >
+            <input
+              id="no-recipient"
+              type="checkbox"
+              className="size-5 shrink-0 rounded border-bb-gray-300 accent-bb-cta"
+              checked={values.noRecipient}
+              onChange={(event) =>
+                handleNoRecipientChange(event.target.checked)
+              }
+            />
+            No person or recipient
+          </label>
+        </div>
 
-      <RecordedAtField
-        id="delivered-at"
-        label="Delivery time"
-        jobDate={jobDate}
-        value={deliveredAt}
-        onChange={setDeliveredAt}
-        error={errors.deliveredAt}
+        <RecordedAtField
+          id="delivered-at"
+          label="Delivery time"
+          jobDate={jobDate}
+          value={values.deliveredAt}
+          onChange={(next) =>
+            change({ ...values, deliveredAt: next }, "deliveredAt")
+          }
+          error={errors.deliveredAt}
+        />
+      </fieldset>
+
+      <RecordFormFooter
+        hintId={hintId}
+        isCommitting={committer.isCommitting}
+        error={committer.error}
       />
-
-      <Button type="submit" disabled={isSubmitting}>
-        Record delivery
-      </Button>
     </form>
   );
 }
@@ -572,8 +699,13 @@ export default function JobDetailPage() {
    * collected it, or it is gone): read it again once. Never retries the action,
    * so it cannot loop. If the job can no longer be allocated the field below
    * disappears, so say why at page level instead. A failed read changes nothing.
+   * `action` is the one that failed: the job is "still fine" if it allows it.
    */
-  async function reloadJob(requestedJobId: string, message: string) {
+  async function reloadJob(
+    requestedJobId: string,
+    message: string,
+    action: "allocate" | "collect" | "deliver",
+  ) {
     try {
       const fresh = await fetchJobById(requestedJobId);
       if (currentJobIdRef.current !== requestedJobId) {
@@ -583,7 +715,7 @@ export default function JobDetailPage() {
       setJob(fresh);
       if (
         message &&
-        (!fresh || !allowedActionsForJob(fresh).includes("allocate"))
+        (!fresh || !allowedActionsForJob(fresh).includes(action))
       ) {
         setActionError(message);
       }
@@ -611,7 +743,7 @@ export default function JobDetailPage() {
     } catch (caught: unknown) {
       void refreshShifts();
       if (isStaleJobError(caught)) {
-        void reloadJob(requestedJobId, jobErrorMessage(caught, ""));
+        void reloadJob(requestedJobId, jobErrorMessage(caught, ""), "allocate");
       }
       throw caught;
     } finally {
@@ -619,6 +751,38 @@ export default function JobDetailPage() {
     }
 
     void refreshShifts();
+  }
+
+  /**
+   * Records a collection or delivery. Like allocateRider it rejects on failure
+   * (the form shows the error under itself and keeps its values) and, when the
+   * API says the page's copy of the job is stale, reads the job once. It never
+   * retries the action.
+   */
+  async function recordJobAction(
+    action: "collect" | "deliver",
+    payload: CollectJobPayload | DeliverJobPayload,
+  ) {
+    if (!job) {
+      return;
+    }
+
+    const requestedJobId = job.id;
+    setActionError(null);
+    setIsSubmitting(true);
+    try {
+      const updated = await performJobAction(requestedJobId, action, payload);
+      if (currentJobIdRef.current === requestedJobId) {
+        setJob(updated);
+      }
+    } catch (caught: unknown) {
+      if (isStaleJobError(caught)) {
+        void reloadJob(requestedJobId, jobErrorMessage(caught, ""), action);
+      }
+      throw caught;
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   if (isLoading) {
@@ -749,12 +913,18 @@ export default function JobDetailPage() {
             </p>
           ) : null}
           {job.collectionRecord ? (
-            <p className="text-sm text-bb-gray-600 dark:text-bb-gray-300">
-              Collected · job {job.collectionRecord.receiptNumber}
+            <p
+              role="status"
+              className="text-sm text-bb-gray-600 dark:text-bb-gray-300"
+            >
+              {collectionRecordText(job.collectionRecord)}
             </p>
           ) : null}
           {job.deliveryRecord ? (
-            <p className="text-sm text-bb-gray-600 dark:text-bb-gray-300">
+            <p
+              role="status"
+              className="text-sm text-bb-gray-600 dark:text-bb-gray-300"
+            >
               {deliveryRecordText(job.deliveryRecord)}
             </p>
           ) : null}
@@ -818,11 +988,10 @@ export default function JobDetailPage() {
             Record collection
           </h2>
           <CollectJobForm
+            key={job.id}
             jobDate={fixedJobDate}
             isSubmitting={isSubmitting}
-            onSubmit={(payload) =>
-              runAction(() => performJobAction(job.id, "collect", payload))
-            }
+            onSubmit={(payload) => recordJobAction("collect", payload)}
           />
         </section>
       ) : null}
@@ -836,11 +1005,10 @@ export default function JobDetailPage() {
             Record delivery
           </h2>
           <DeliverJobForm
+            key={job.id}
             jobDate={fixedJobDate}
             isSubmitting={isSubmitting}
-            onSubmit={(payload) =>
-              runAction(() => performJobAction(job.id, "deliver", payload))
-            }
+            onSubmit={(payload) => recordJobAction("deliver", payload)}
           />
         </section>
       ) : null}
