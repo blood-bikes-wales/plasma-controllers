@@ -33,15 +33,22 @@ function renderJobDetail({
   jobId = mockActiveJobs[0].id,
   roles = [Role.Controller],
   active,
+  olderCompleted,
 }: {
   jobId?: string;
   roles?: Role[];
   active?: DeliveryJob[];
+  olderCompleted?: DeliveryJob[];
 } = {}) {
   const user = { ...mockAuthUser, roles };
   setAuthToken("test-google-id-token");
   setActiveRole(roles[0]);
-  const fetchStub = vi.fn(stubJobsFetch(user, active ? { active } : {}));
+  const fetchStub = vi.fn(
+    stubJobsFetch(user, {
+      ...(active ? { active } : {}),
+      ...(olderCompleted ? { olderCompleted } : {}),
+    }),
+  );
   vi.stubGlobal("fetch", fetchStub);
 
   const router = createMemoryRouter(withAuthProvider(appRoutes), {
@@ -57,6 +64,45 @@ afterEach(() => {
   clearAuthToken();
   clearActiveRole();
   vi.unstubAllGlobals();
+});
+
+describe("Job detail loading", () => {
+  const oldJob: DeliveryJob = {
+    ...mockActiveJobs[0],
+    id: "10410410-1111-1111-1111-111111111104",
+    reference: "JB-0900",
+    status: "Delivered",
+    allowedActions: [],
+  };
+
+  it("opens a job through GET /jobs/{id}, not by searching the lists", async () => {
+    const { fetchStub } = renderJobDetail();
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+
+    const urls = fetchStub.mock.calls.map(([url]) => String(url));
+    expect(
+      urls.some((url) => url.endsWith(`/jobs/${mockActiveJobs[0].id}`)),
+    ).toBe(true);
+    expect(urls.some((url) => url.endsWith("/jobs/active"))).toBe(false);
+    expect(urls.some((url) => url.endsWith("/jobs/completed"))).toBe(false);
+  });
+
+  it("opens a completed job the list hides, such as one older than 24 hours", async () => {
+    renderJobDetail({ jobId: oldJob.id, olderCompleted: [oldJob] });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-0900" }),
+    ).toBeInTheDocument();
+  });
+
+  it("says the job was not found when the API returns 404", async () => {
+    renderJobDetail({ jobId: "99999999-9999-9999-9999-999999999999" });
+
+    expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+  });
 });
 
 describe("Job detail lifecycle", () => {

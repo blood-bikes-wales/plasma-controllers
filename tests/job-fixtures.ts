@@ -220,26 +220,65 @@ export function stubJobsFetch(
   {
     active = mockActiveJobs,
     completed = mockCompletedJobs,
-  }: { active?: DeliveryJob[]; completed?: DeliveryJob[] } = {},
+    olderCompleted = [],
+    failSettingsSave = false,
+  }: {
+    active?: DeliveryJob[];
+    completed?: DeliveryJob[];
+    /**
+     * Completed jobs the API only lists once the user's `showCompletedJobs`
+     * setting is on (it hides them 24 hours after completion otherwise). They
+     * still open by id either way.
+     */
+    olderCompleted?: DeliveryJob[];
+    /** Make PATCH /me fail with a 500. */
+    failSettingsSave?: boolean;
+  } = {},
 ) {
   const activeState = [...active];
   const completedState = [...completed];
   const legState: DeliveryJob[] = [];
+  // The API keeps the setting per user, so it outlives any one render.
+  let settings = { ...user.settings };
 
   function allKnownJobs(): DeliveryJob[] {
-    return [...activeState, ...completedState, ...legState];
+    return [...activeState, ...completedState, ...olderCompleted, ...legState];
   }
 
   function findJob(jobId: string): DeliveryJob | undefined {
-    return allKnownJobs().find((candidate) => candidate.id === jobId);
+    const known = allKnownJobs();
+    const direct = known.find((candidate) => candidate.id === jobId);
+    if (direct) {
+      return direct;
+    }
+
+    // Like the API, open a relay leg by its own id.
+    for (const parent of known) {
+      const leg = parent.legs?.find((candidate) => candidate.id === jobId);
+      if (leg) {
+        return leg;
+      }
+    }
+
+    return undefined;
   }
 
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method?.toUpperCase() ?? "GET";
 
+    if (method === "PATCH" && url.endsWith("/me")) {
+      if (failSettingsSave) {
+        return jsonResponse({ message: "Could not save your setting." }, 500);
+      }
+
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      settings = { showCompletedJobs: body.showCompletedJobs === true };
+      return jsonResponse({ ...user, settings });
+    }
+
     if (url.includes("/me")) {
-      return jsonResponse(user);
+      return jsonResponse({ ...user, settings });
     }
 
     if (url.includes("/shifts/active")) {
@@ -391,10 +430,22 @@ export function stubJobsFetch(
     }
 
     if (url.includes("/jobs/completed")) {
-      return jsonResponse({ data: completedState });
+      return jsonResponse({
+        data: settings.showCompletedJobs
+          ? [...completedState, ...olderCompleted]
+          : completedState,
+      });
     }
     if (url.includes("/jobs/active")) {
       return jsonResponse({ data: activeState });
+    }
+
+    const showMatch = url.match(/\/jobs\/([^/]+)$/);
+    if (method === "GET" && showMatch) {
+      const found = findJob(decodeURIComponent(showMatch[1]));
+      return found
+        ? jsonResponse(found)
+        : jsonResponse({ message: "No query results for model." }, 404);
     }
 
     return jsonResponse({ message: "Not found" }, 404);

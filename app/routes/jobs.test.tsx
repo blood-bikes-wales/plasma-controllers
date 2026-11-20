@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearActiveRole } from "~/lib/active-role";
 import { AuthProvider } from "~/lib/auth";
@@ -8,7 +8,11 @@ import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 import { Role } from "~/lib/roles";
 
 import { mockAuthUser } from "../../tests/auth-fixtures";
-import { mockActiveJobs, stubJobsFetch } from "../../tests/job-fixtures";
+import {
+  mockActiveJobs,
+  mockCompletedJobs,
+  stubJobsFetch,
+} from "../../tests/job-fixtures";
 import JobsPage, { meta } from "./jobs";
 import JobsNewRoute from "./jobs-new";
 import JobsNewAssignRoute from "./jobs-new-assign";
@@ -461,5 +465,293 @@ describe("JobsPage", () => {
 
     const card = within(screen.getByRole("link", { name: /JB-1042/i }));
     expect(card.getByText(first.collection.address)).toBeInTheDocument();
+  });
+});
+
+describe("Show all previous jobs", () => {
+  const [recentJob] = mockCompletedJobs;
+  const olderJob = {
+    ...mockCompletedJobs[1],
+    id: "10410410-1111-1111-1111-111111111104",
+    reference: "JB-0900",
+  };
+  const SWITCH_NAME = "Show all previous jobs";
+
+  function fetchWithOlderJob(
+    options: { showCompletedJobs?: boolean; failSettingsSave?: boolean } = {},
+  ) {
+    return stubJobsFetch(
+      {
+        ...mockAuthUser,
+        settings: { showCompletedJobs: options.showCompletedJobs ?? false },
+      },
+      {
+        completed: [recentJob],
+        olderCompleted: [olderJob],
+        failSettingsSave: options.failSettingsSave,
+      },
+    );
+  }
+
+  async function openCompletedTab() {
+    const user = userEvent.setup();
+    await waitForJobsLoaded();
+    await user.click(screen.getByRole("tab", { name: "Completed" }));
+    return user;
+  }
+
+  function requestsTo(
+    fetchImpl: ReturnType<typeof stubJobsFetch>,
+    method: string,
+    pathEnd: string,
+  ) {
+    return fetchImpl.mock.calls.filter(
+      ([url, init]) =>
+        String(url).endsWith(pathEnd) &&
+        (init?.method?.toUpperCase() ?? "GET") === method,
+    );
+  }
+
+  it("only appears on the Completed tab", async () => {
+    renderJobsPage("/jobs", { fetchImpl: fetchWithOlderJob() });
+    await waitForJobsLoaded();
+
+    expect(
+      screen.queryByRole("switch", { name: SWITCH_NAME }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Completed" }));
+
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).toBeVisible();
+  });
+
+  it("is off by default and lists only what the API returns", async () => {
+    renderJobsPage("/jobs", { fetchImpl: fetchWithOlderJob() });
+    await openCompletedTab();
+
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).not.toBeChecked();
+    expect(screen.getByText("JB-1020")).toBeInTheDocument();
+    expect(screen.queryByText("JB-0900")).not.toBeInTheDocument();
+  });
+
+  it("starts on when the signed-in user has saved it, and shows the older jobs", async () => {
+    renderJobsPage("/jobs", {
+      fetchImpl: fetchWithOlderJob({ showCompletedJobs: true }),
+    });
+    await openCompletedTab();
+
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).toBeChecked();
+    expect(screen.getByText("JB-0900")).toBeInTheDocument();
+  });
+
+  it("saves through PATCH /me, then refetches the completed list and shows the older jobs", async () => {
+    const fetchImpl = fetchWithOlderJob();
+    renderJobsPage("/jobs", { fetchImpl });
+    const user = await openCompletedTab();
+    const completedBefore = requestsTo(
+      fetchImpl,
+      "GET",
+      "/jobs/completed",
+    ).length;
+
+    await user.click(screen.getByRole("switch", { name: SWITCH_NAME }));
+
+    expect(await screen.findByText("JB-0900")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).toBeChecked();
+
+    const patches = requestsTo(fetchImpl, "PATCH", "/me");
+    expect(patches).toHaveLength(1);
+    expect(JSON.parse(String(patches[0][1]?.body))).toEqual({
+      showCompletedJobs: true,
+    });
+    expect(requestsTo(fetchImpl, "GET", "/jobs/completed")).toHaveLength(
+      completedBefore + 1,
+    );
+
+    // The saved write comes first, so the refetch sees the new setting.
+    const order = fetchImpl.mock.calls.map(
+      ([url, init]) => `${init?.method ?? "GET"} ${String(url)}`,
+    );
+    const patchAt = order.findIndex((call) => call.startsWith("PATCH"));
+    expect(
+      order.slice(patchAt + 1).some((call) => call.endsWith("/jobs/completed")),
+    ).toBe(true);
+  });
+
+  it("hides the older jobs again when it is turned off", async () => {
+    renderJobsPage("/jobs", {
+      fetchImpl: fetchWithOlderJob({ showCompletedJobs: true }),
+    });
+    const user = await openCompletedTab();
+    expect(screen.getByText("JB-0900")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("switch", { name: SWITCH_NAME }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("JB-0900")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).not.toBeChecked();
+    expect(screen.getByText("JB-1020")).toBeInTheDocument();
+  });
+
+  it("goes back and shows an error when the save fails", async () => {
+    const fetchImpl = fetchWithOlderJob({ failSettingsSave: true });
+    renderJobsPage("/jobs", { fetchImpl });
+    const user = await openCompletedTab();
+    const completedBefore = requestsTo(
+      fetchImpl,
+      "GET",
+      "/jobs/completed",
+    ).length;
+
+    await user.click(screen.getByRole("switch", { name: SWITCH_NAME }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not save your setting.",
+    );
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).toBeEnabled();
+    expect(screen.queryByText("JB-0900")).not.toBeInTheDocument();
+    expect(requestsTo(fetchImpl, "GET", "/jobs/completed")).toHaveLength(
+      completedBefore,
+    );
+  });
+
+  it("survives a remount with the same signed-in user", async () => {
+    const fetchImpl = fetchWithOlderJob();
+    setAuthToken("test-google-id-token");
+    vi.stubGlobal("fetch", fetchImpl);
+    const router = createMemoryRouter(
+      [
+        {
+          element: (
+            <AuthProvider>
+              <Outlet />
+            </AuthProvider>
+          ),
+          children: [
+            { path: "/jobs", element: <JobsPage /> },
+            { path: "/elsewhere", element: <p>Somewhere else</p> },
+          ],
+        },
+      ],
+      { initialEntries: ["/jobs"] },
+    );
+    render(<RouterProvider router={router} />);
+    const user = await openCompletedTab();
+    await user.click(screen.getByRole("switch", { name: SWITCH_NAME }));
+    expect(await screen.findByText("JB-0900")).toBeInTheDocument();
+
+    await router.navigate("/elsewhere");
+    expect(await screen.findByText("Somewhere else")).toBeInTheDocument();
+    await router.navigate("/jobs");
+    await waitForJobsLoaded();
+    await user.click(screen.getByRole("tab", { name: "Completed" }));
+
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).toBeChecked();
+    expect(await screen.findByText("JB-0900")).toBeInTheDocument();
+    expect(requestsTo(fetchImpl, "PATCH", "/me")).toHaveLength(1);
+  });
+
+  it("is still on after signing in again, because the API holds it", async () => {
+    const fetchImpl = fetchWithOlderJob();
+    const first = renderJobsPage("/jobs", { fetchImpl });
+    const user = await openCompletedTab();
+    await user.click(screen.getByRole("switch", { name: SWITCH_NAME }));
+    expect(await screen.findByText("JB-0900")).toBeInTheDocument();
+    first.unmount();
+
+    // A new session: nothing is carried over in the browser, only GET /me.
+    renderJobsPage("/jobs", { fetchImpl });
+    await openCompletedTab();
+
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).toBeChecked();
+    expect(await screen.findByText("JB-0900")).toBeInTheDocument();
+  });
+
+  it("does no age filtering of its own", async () => {
+    // Completed long ago, yet listed because that is what the API returned.
+    const ancient = {
+      ...recentJob,
+      id: "10510510-1111-1111-1111-111111111105",
+      reference: "JB-0001",
+      createdAt: "2020-01-01T00:00:00.000Z",
+      deliveryRecord: {
+        recipient: "Someone",
+        noRecipient: false,
+        deliveredAt: "2020-01-01T01:00:00.000Z",
+      },
+    };
+    renderJobsPage("/jobs", {
+      fetchImpl: stubJobsFetch(mockAuthUser, { completed: [ancient] }),
+    });
+    await openCompletedTab();
+
+    expect(screen.getByText("JB-0001")).toBeInTheDocument();
+  });
+
+  it("keeps the setting out of localStorage and sessionStorage", async () => {
+    const fetchImpl = fetchWithOlderJob();
+    renderJobsPage("/jobs", { fetchImpl });
+    const user = await openCompletedTab();
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+
+    await user.click(screen.getByRole("switch", { name: SWITCH_NAME }));
+    expect(await screen.findByText("JB-0900")).toBeInTheDocument();
+
+    const written = setItem.mock.calls.map(([key, value]) => `${key}=${value}`);
+    expect(written.filter((entry) => /complet|show/i.test(entry))).toEqual([]);
+    setItem.mockRestore();
+  });
+
+  it("does not crash when an older API sends no settings", async () => {
+    setAuthToken("test-google-id-token");
+    const stub = fetchWithOlderJob();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await stub(input, init);
+        if (String(input).endsWith("/me")) {
+          const { settings: _settings, ...profile } = await response.json();
+          return new Response(JSON.stringify(profile), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return response;
+      }),
+    );
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/jobs",
+          element: (
+            <AuthProvider>
+              <JobsPage />
+            </AuthProvider>
+          ),
+        },
+      ],
+      { initialEntries: ["/jobs"] },
+    );
+    render(<RouterProvider router={router} />);
+    await openCompletedTab();
+
+    expect(screen.getByRole("switch", { name: SWITCH_NAME })).not.toBeChecked();
+    expect(screen.getByText("JB-1020")).toBeInTheDocument();
+  });
+
+  it("says when nothing was completed in the last 24 hours", async () => {
+    renderJobsPage("/jobs", {
+      fetchImpl: stubJobsFetch(mockAuthUser, { completed: [] }),
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Completed" })).toBeVisible();
+    });
+    await userEvent.click(screen.getByRole("tab", { name: "Completed" }));
+
+    expect(
+      screen.getByText("No jobs completed in the last 24 hours."),
+    ).toBeInTheDocument();
   });
 });
