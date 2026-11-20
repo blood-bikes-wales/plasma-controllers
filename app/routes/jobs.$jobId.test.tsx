@@ -398,3 +398,74 @@ describe("Job detail location notes", () => {
     expect(deliveryAddress.parentElement?.children).toHaveLength(1);
   });
 });
+
+describe("Job detail estimated times", () => {
+  const [baseJob] = mockActiveJobs;
+
+  function atToday(hours: number, minutes: number) {
+    const date = new Date();
+    date.setHours(hours, minutes, 0, 0);
+    return date.toISOString();
+  }
+
+  it("shows each estimate under the matching address", async () => {
+    renderJobDetail({
+      active: [
+        {
+          ...baseJob,
+          estimatedCollectionAt: atToday(9, 30),
+          estimatedDeliveryAt: atToday(11, 15),
+        },
+      ],
+    });
+
+    const collection = await screen.findByText(
+      "Estimated collection: Today, 09:30",
+    );
+    const delivery = screen.getByText("Estimated delivery: Today, 11:15");
+    expect(collection.previousElementSibling).toHaveTextContent(
+      baseJob.collection.address,
+    );
+    expect(delivery.previousElementSibling).toHaveTextContent(
+      baseJob.delivery.address,
+    );
+  });
+
+  it("shows only the estimate that was set", async () => {
+    renderJobDetail({
+      active: [
+        {
+          ...baseJob,
+          estimatedCollectionAt: atToday(9, 30),
+          estimatedDeliveryAt: null,
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByText("Estimated collection: Today, 09:30"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Estimated delivery/)).not.toBeInTheDocument();
+  });
+
+  it("shows no estimate lines when both are null or absent", async () => {
+    renderJobDetail({
+      active: [{ ...baseJob, estimatedCollectionAt: null }],
+    });
+
+    const address = await screen.findByText(baseJob.collection.address);
+    expect(address.parentElement?.children).toHaveLength(1);
+    expect(screen.queryByText(/Estimated/)).not.toBeInTheDocument();
+  });
+
+  it("shows estimates to a rider who can only view jobs", async () => {
+    renderJobDetail({
+      roles: [Role.Rider],
+      active: [{ ...baseJob, estimatedDeliveryAt: atToday(11, 15) }],
+    });
+
+    expect(
+      await screen.findByText("Estimated delivery: Today, 11:15"),
+    ).toBeInTheDocument();
+  });
+});

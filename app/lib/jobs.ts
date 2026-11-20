@@ -63,6 +63,8 @@ export type CreateJobPayload = {
   delivery: PlaceLocation & { notes?: string };
   contents: string;
   serviceAreas: string[];
+  estimatedCollectionAt?: string;
+  estimatedDeliveryAt?: string;
 };
 
 export type AllocateJobPayload = {
@@ -100,6 +102,10 @@ export type DeliveryJob = {
   delivery: JobLocation;
   contents: string;
   serviceAreas: string[];
+  /** Controller's estimate, not the recorded collection time. */
+  estimatedCollectionAt?: string | null;
+  /** Controller's estimate, not the recorded delivery time. */
+  estimatedDeliveryAt?: string | null;
   createdAt: string | null;
   allocatedRider?: JobAllocatedRider | null;
   collectionRecord?: JobCollectionRecord | null;
@@ -239,6 +245,14 @@ export function formatJobCreatedAt(createdAt: string | null): string {
     month: "short",
   });
   return `${day}, ${time}`;
+}
+
+/**
+ * Label for an estimated collection or delivery time ("Today, 09:30"), or an
+ * empty string when there is no estimate so callers can hide the line.
+ */
+export function formatEstimatedTime(iso: string | null | undefined): string {
+  return formatJobCreatedAt(iso ?? null);
 }
 
 export function jobErrorMessage(error: unknown, fallback: string): string {
