@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "~/lib/api-client";
 import type { CreateJobPayload, DeliveryJob, PlaceLocation } from "~/lib/jobs";
 import type { PlacesLookup } from "~/lib/places";
-import { clearSavedLocations, recentLocations } from "~/lib/saved-locations";
+import {
+  clearSavedLocations,
+  recentLocations,
+  SAVED_LOCATIONS_KEY,
+} from "~/lib/saved-locations";
 import { mockServiceAreas } from "../../tests/service-area-fixtures";
 import { NewJobDrawer } from "./new-job-drawer";
 
@@ -325,6 +329,134 @@ describe("NewJobDrawer", () => {
     expect(recentLocations()).toEqual(
       expect.arrayContaining([COLLECTION, DELIVERY]),
     );
+  });
+
+  it("submits collection and delivery notes when entered", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn(async (_payload: CreateJobPayload) => CREATED_JOB);
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    await user.type(screen.getByPlaceholderText("e.g. Path lab"), "path lab ");
+    await user.type(
+      screen.getByPlaceholderText("e.g. Reception outside"),
+      "reception outside",
+    );
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => {
+      expect(createJob).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createJob.mock.calls[0];
+    expect(payload.collection).toEqual({ ...COLLECTION, notes: "path lab" });
+    expect(payload.delivery).toEqual({
+      ...DELIVERY,
+      notes: "reception outside",
+    });
+  });
+
+  it("labels both notes inputs as optional", () => {
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    expect(screen.getAllByLabelText("Notes (optional)")).toHaveLength(2);
+  });
+
+  it("omits notes from the payload when left blank", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn(async (_payload: CreateJobPayload) => CREATED_JOB);
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    await user.type(screen.getByPlaceholderText("e.g. Path lab"), "   ");
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => {
+      expect(createJob).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createJob.mock.calls[0];
+    expect(payload.collection).not.toHaveProperty("notes");
+    expect(payload.delivery).not.toHaveProperty("notes");
+  });
+
+  it("does not remember notes in recent or most-used places", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn(
+      async (_payload: CreateJobPayload): Promise<DeliveryJob> => ({
+        ...CREATED_JOB,
+        collection: { ...COLLECTION, notes: "path lab" },
+        delivery: { ...DELIVERY, notes: "reception outside" },
+      }),
+    );
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    await user.type(screen.getByPlaceholderText("e.g. Path lab"), "path lab");
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => {
+      expect(recentLocations()).toHaveLength(2);
+    });
+    expect(localStorage.getItem(SAVED_LOCATIONS_KEY)).not.toContain("notes");
+    expect(localStorage.getItem(SAVED_LOCATIONS_KEY)).not.toContain("path lab");
+  });
+
+  it("shows a notes length error inline and does not submit", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn(async (_payload: CreateJobPayload) => CREATED_JOB);
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    await user.click(screen.getByPlaceholderText("e.g. Reception outside"));
+    await user.paste("x".repeat(501));
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    expect(
+      await screen.findByText("Notes must be 500 characters or fewer"),
+    ).toBeInTheDocument();
+    expect(createJob).not.toHaveBeenCalled();
   });
 
   it("shows a 422 validation error inline", async () => {

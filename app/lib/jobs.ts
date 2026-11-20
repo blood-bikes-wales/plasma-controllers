@@ -7,6 +7,14 @@ export type PlaceLocation = {
   longitude: number;
 };
 
+/**
+ * A stop on a job. `notes` belong to this job only (never to the shared place),
+ * so they are kept off `PlaceLocation`, which feeds recent/most-used places.
+ */
+export type JobLocation = PlaceLocation & {
+  notes?: string | null;
+};
+
 export type JobSender = {
   name: string;
   phone: string;
@@ -51,8 +59,8 @@ export type JobCancellation = {
 
 export type CreateJobPayload = {
   sender: JobSender;
-  collection: PlaceLocation;
-  delivery: PlaceLocation;
+  collection: PlaceLocation & { notes?: string };
+  delivery: PlaceLocation & { notes?: string };
   contents: string;
   serviceAreas: string[];
 };
@@ -88,8 +96,8 @@ export type DeliveryJob = {
   parentJobId?: string | null;
   legNumber?: number | null;
   sender: JobSender;
-  collection: PlaceLocation;
-  delivery: PlaceLocation;
+  collection: JobLocation;
+  delivery: JobLocation;
   contents: string;
   serviceAreas: string[];
   createdAt: string | null;

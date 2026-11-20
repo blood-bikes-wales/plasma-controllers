@@ -81,6 +81,16 @@ function uniqueByPlaceId(locations: PlaceLocation[]): PlaceLocation[] {
   });
 }
 
+/** Only the place fields are remembered; anything else on a job stop (e.g. its notes) is dropped. */
+function placeFields(location: PlaceLocation): PlaceLocation {
+  return {
+    placeId: location.placeId,
+    address: location.address,
+    latitude: location.latitude,
+    longitude: location.longitude,
+  };
+}
+
 function upsertLocation(
   stored: SavedLocation[],
   location: PlaceLocation,
@@ -88,7 +98,10 @@ function upsertLocation(
 ): SavedLocation[] {
   const existing = stored.find((item) => item.placeId === location.placeId);
   if (!existing) {
-    return [{ ...location, useCount: 1, lastUsedAt: now }, ...stored];
+    return [
+      { ...placeFields(location), useCount: 1, lastUsedAt: now },
+      ...stored,
+    ];
   }
 
   return stored.map((item) => {
@@ -97,7 +110,7 @@ function upsertLocation(
     }
 
     return {
-      ...location,
+      ...placeFields(location),
       useCount: item.useCount + 1,
       lastUsedAt: now,
     };

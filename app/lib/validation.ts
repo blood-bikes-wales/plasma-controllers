@@ -56,6 +56,8 @@ const API_FIELD_MAP: Record<string, string> = {
   "sender.name": "senderName",
   "sender.phone": "senderPhone",
   "sender.organisation": "senderOrganisation",
+  "collection.notes": "collectionNotes",
+  "delivery.notes": "deliveryNotes",
   contents: "contents",
   serviceAreas: "serviceAreas",
   registration: "registration",
