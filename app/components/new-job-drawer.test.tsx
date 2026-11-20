@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "~/lib/api-client";
@@ -350,6 +350,40 @@ describe("NewJobDrawer", () => {
     expect(recentLocations()).toEqual(
       expect.arrayContaining([COLLECTION, DELIVERY]),
     );
+  });
+
+  it("does not ask for or send a rider, shift or allocation when creating a job", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    const createJob = vi.fn(async (_payload: CreateJobPayload) => CREATED_JOB);
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
+        open
+        onOpenChange={() => {}}
+        onCreated={onCreated}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    const form = screen.getByRole("dialog");
+    expect(within(form).queryByLabelText(/rider|shift/i)).toBeNull();
+    expect(
+      within(form).queryByRole("button", { name: /assign|allocate/i }),
+    ).toBeNull();
+
+    await fillRequiredFields(user);
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(CREATED_JOB));
+    const payload = createJob.mock.calls[0][0] as Record<string, unknown>;
+    expect(Object.keys(payload).join(" ")).not.toMatch(
+      /rider|shift|allocat|assign/i,
+    );
+    expect(screen.queryByText("Assign rider")).not.toBeInTheDocument();
   });
 
   it("submits collection and delivery notes when entered", async () => {
@@ -1242,6 +1276,32 @@ describe("NewJobDrawer service areas from the places", () => {
       await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
       expect(createJob).toHaveBeenCalledWith(
         expect.objectContaining({ jobType: "milk", milkLitres: 2.5 }),
+      );
+    });
+
+    it("does not ask for or send a rider when creating a milk job", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await fillMother(user);
+
+      const form = screen.getByRole("dialog");
+      expect(within(form).queryByLabelText(/rider|shift/i)).toBeNull();
+      expect(
+        within(form).queryByRole("button", { name: /assign|allocate/i }),
+      ).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
+      const payload = (
+        createJob.mock.calls as unknown as [CreateJobPayload][]
+      )[0][0] as Record<string, unknown>;
+      expect(Object.keys(payload).join(" ")).not.toMatch(
+        /rider|shift|allocat|assign/i,
       );
     });
 
