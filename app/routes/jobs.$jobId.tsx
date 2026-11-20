@@ -611,6 +611,7 @@ export default function JobDetailPage() {
             Convert to relay
           </h2>
           <RelayJobForm
+            jobDate={getJobDate(job)}
             isSubmitting={isSubmitting}
             onSubmit={(payload) => runAction(() => relayJob(job.id, payload))}
           />

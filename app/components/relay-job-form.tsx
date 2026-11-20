@@ -5,9 +5,15 @@ import { z } from "zod";
 import { FieldError } from "~/components/field-error";
 import { PlaceLocationField } from "~/components/place-location-field";
 import { Button } from "~/components/ui/button";
-import type { PlaceLocation, RelayJobPayload } from "~/lib/jobs";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import {
+  combineDayAndTime,
+  type PlaceLocation,
+  type RelayJobPayload,
+  type RelayRendezvousPoint,
+} from "~/lib/jobs";
 import type { PlacesLookup } from "~/lib/places";
-import { fieldErrors } from "~/lib/validation";
 
 const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
   placeId: z.string().min(1),
@@ -16,19 +22,30 @@ const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
   longitude: z.number(),
 });
 
+const arrivalTimeSchema = z
+  .string()
+  .trim()
+  .min(1, "Enter an arrival time")
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter a valid time");
+
 const relayFormSchema = z.object({
   rendezvousPoints: z
-    .array(placeLocationSchema.nullable())
+    .array(
+      z.object({
+        place: placeLocationSchema.nullable(),
+        arrivalTime: arrivalTimeSchema,
+      }),
+    )
     .min(1, "Add at least one rendezvous point")
     .superRefine((points, ctx) => {
       points.forEach((point, index) => {
-        if (point !== null) {
+        if (point.place !== null) {
           return;
         }
 
         ctx.addIssue({
           code: "custom",
-          path: [index],
+          path: [index, "place"],
           message: "Choose a rendezvous point from the place search",
         });
       });
@@ -38,6 +55,7 @@ const relayFormSchema = z.object({
 type RendezvousField = {
   id: string;
   value: PlaceLocation | null;
+  arrivalTime: string;
 };
 
 function createRendezvousField(
@@ -46,16 +64,20 @@ function createRendezvousField(
   return {
     id: crypto.randomUUID(),
     value,
+    arrivalTime: "",
   };
 }
 
 type RelayJobFormProps = {
+  /** The parent job's day; arrival times are combined with its calendar day. */
+  jobDate?: string | null;
   isSubmitting: boolean;
   onSubmit: (payload: RelayJobPayload) => Promise<void>;
   placesLookup?: PlacesLookup;
 };
 
 export function RelayJobForm({
+  jobDate = null,
   isSubmitting,
   onSubmit,
   placesLookup,
@@ -68,9 +90,15 @@ export function RelayJobForm({
     {},
   );
 
-  function updatePoint(id: string, value: PlaceLocation | null) {
+  function updatePoint(
+    id: string,
+    patch: Partial<Pick<RendezvousField, "value" | "arrivalTime">>,
+    errorKey: "rendezvous" | "arrival",
+  ) {
     setPoints((current) =>
-      current.map((point) => (point.id === id ? { ...point, value } : point)),
+      current.map((point) =>
+        point.id === id ? { ...point, ...patch } : point,
+      ),
     );
     const index = points.findIndex((point) => point.id === id);
     if (index === -1) {
@@ -79,7 +107,7 @@ export function RelayJobForm({
 
     setFieldErrorsMap((current) => {
       const next = { ...current };
-      delete next[`rendezvous-${index}`];
+      delete next[`${errorKey}-${index}`];
       return next;
     });
   }
@@ -103,7 +131,10 @@ export function RelayJobForm({
     setFormError(null);
 
     const parsed = relayFormSchema.safeParse({
-      rendezvousPoints: points.map((point) => point.value),
+      rendezvousPoints: points.map((point) => ({
+        place: point.value,
+        arrivalTime: point.arrivalTime,
+      })),
     });
     if (!parsed.success) {
       const nextErrors: Record<string, string> = {};
@@ -113,7 +144,10 @@ export function RelayJobForm({
           continue;
         }
 
-        const key = `rendezvous-${index}`;
+        const key =
+          issue.path[2] === "arrivalTime"
+            ? `arrival-${index}`
+            : `rendezvous-${index}`;
         if (key in nextErrors) {
           continue;
         }
@@ -121,16 +155,36 @@ export function RelayJobForm({
         nextErrors[key] = issue.message;
       }
 
-      const generic = fieldErrors(parsed);
+      // Only the list-level issue (e.g. no points) is a form error; per-row
+      // issues are shown on their own field.
+      const listIssue = parsed.error.issues.find(
+        (issue) => issue.path.length === 1,
+      );
       setFieldErrorsMap(nextErrors);
-      setFormError(generic.rendezvousPoints ?? null);
+      setFormError(listIssue?.message ?? null);
       return;
     }
 
-    const rendezvousPoints = parsed.data.rendezvousPoints.filter(
-      (point): point is PlaceLocation => point !== null,
-    );
+    // The job's day is always present from the API; fall back to today so the
+    // form still submits if it is ever missing.
+    const day = jobDate ?? new Date().toISOString();
+    const rendezvousPoints: RelayRendezvousPoint[] = [];
+    const timeErrors: Record<string, string> = {};
+    parsed.data.rendezvousPoints.forEach((point, index) => {
+      const arrivesAt = combineDayAndTime(day, point.arrivalTime);
+      if (point.place === null || arrivesAt === undefined) {
+        timeErrors[`arrival-${index}`] = "Enter a valid time";
+        return;
+      }
 
+      rendezvousPoints.push({ ...point.place, arrivesAt });
+    });
+    if (Object.keys(timeErrors).length > 0) {
+      setFieldErrorsMap(timeErrors);
+      return;
+    }
+
+    setFieldErrorsMap({});
     await onSubmit({ rendezvousPoints });
   }
 
@@ -164,10 +218,33 @@ export function RelayJobForm({
             id={`rendezvous-${point.id}`}
             label={`Rendezvous point ${index + 1}`}
             value={point.value}
-            onChange={(value) => updatePoint(point.id, value)}
+            onChange={(value) => updatePoint(point.id, { value }, "rendezvous")}
             error={fieldErrorsMap[`rendezvous-${index}`]}
             lookup={placesLookup}
           />
+          <div className="space-y-2">
+            <Label
+              htmlFor={`arrival-${point.id}`}
+              className="text-bb-gray-700 dark:text-bb-gray-300"
+            >
+              {`Arrival time at rendezvous ${index + 1}`}
+            </Label>
+            <Input
+              id={`arrival-${point.id}`}
+              type="time"
+              value={point.arrivalTime}
+              onChange={(event) =>
+                updatePoint(
+                  point.id,
+                  { arrivalTime: event.target.value },
+                  "arrival",
+                )
+              }
+              aria-invalid={!!fieldErrorsMap[`arrival-${index}`]}
+              className="h-11 text-base dark:bg-input/30"
+            />
+            <FieldError message={fieldErrorsMap[`arrival-${index}`]} />
+          </div>
         </div>
       ))}
 
