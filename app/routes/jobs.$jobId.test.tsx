@@ -339,3 +339,62 @@ describe("Record collection and delivery time only", () => {
     expect(input).toHaveAttribute("type", "datetime-local");
   });
 });
+
+describe("Job detail location notes", () => {
+  const [baseJob] = mockActiveJobs;
+
+  it("shows the collection and delivery notes under the matching addresses", async () => {
+    renderJobDetail({
+      active: [
+        {
+          ...baseJob,
+          collection: { ...baseJob.collection, notes: "path lab" },
+          delivery: { ...baseJob.delivery, notes: "reception outside" },
+        },
+      ],
+    });
+
+    const collectionNote = await screen.findByText("path lab");
+    const deliveryNote = screen.getByText("reception outside");
+    expect(collectionNote.previousElementSibling).toHaveTextContent(
+      baseJob.collection.address,
+    );
+    expect(deliveryNote.previousElementSibling).toHaveTextContent(
+      baseJob.delivery.address,
+    );
+  });
+
+  it("shows only the note that was entered", async () => {
+    renderJobDetail({
+      active: [
+        {
+          ...baseJob,
+          collection: { ...baseJob.collection, notes: "path lab" },
+          delivery: { ...baseJob.delivery, notes: null },
+        },
+      ],
+    });
+
+    const collectionNote = await screen.findByText("path lab");
+    expect(collectionNote.parentElement?.children).toHaveLength(2);
+    const deliveryAddress = screen.getByText(baseJob.delivery.address);
+    expect(deliveryAddress.parentElement?.children).toHaveLength(1);
+  });
+
+  it("hides the note lines when the notes are null or absent", async () => {
+    renderJobDetail({
+      active: [
+        {
+          ...baseJob,
+          collection: { ...baseJob.collection, notes: null },
+          delivery: { ...baseJob.delivery },
+        },
+      ],
+    });
+
+    const address = await screen.findByText(baseJob.collection.address);
+    expect(address.parentElement?.children).toHaveLength(1);
+    const deliveryAddress = screen.getByText(baseJob.delivery.address);
+    expect(deliveryAddress.parentElement?.children).toHaveLength(1);
+  });
+});

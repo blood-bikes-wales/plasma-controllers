@@ -35,6 +35,9 @@ const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
   longitude: z.number(),
 });
 
+const NOTES_MAX = 500;
+const NOTES_TOO_LONG = `Notes must be ${NOTES_MAX} characters or fewer`;
+
 const newJobFormSchema = z.object({
   senderName: z.string().trim().min(1, "Enter the caller's name"),
   senderPhone: z
@@ -53,6 +56,8 @@ const newJobFormSchema = z.object({
     .refine((value): value is PlaceLocation => value !== null, {
       message: "Choose a delivery location from the place search",
     }),
+  collectionNotes: z.string().trim().max(NOTES_MAX, NOTES_TOO_LONG),
+  deliveryNotes: z.string().trim().max(NOTES_MAX, NOTES_TOO_LONG),
   contents: z.string().trim().min(1, "Describe the item or contents"),
   serviceAreas: z.array(z.string()).min(1, "Choose at least one service area"),
 });
@@ -65,6 +70,8 @@ const EMPTY_FORM: NewJobFormState = {
   senderOrganisation: "",
   collection: null,
   delivery: null,
+  collectionNotes: "",
+  deliveryNotes: "",
   contents: "",
   serviceAreas: [],
 };
@@ -97,6 +104,45 @@ function FormSection({
   );
 }
 
+function NotesField({
+  id,
+  value,
+  onChange,
+  error,
+  placeholder,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+  placeholder: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id} className="text-bb-gray-700 dark:text-bb-gray-300">
+        Notes <span className="font-normal text-bb-gray-500">(optional)</span>
+      </Label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-invalid={!!error}
+        className="h-11 text-base dark:bg-input/30"
+        placeholder={placeholder}
+      />
+      <FieldError message={error} />
+    </div>
+  );
+}
+
+function withNotes(
+  location: PlaceLocation,
+  notes: string,
+): CreateJobPayload["collection"] {
+  const trimmed = notes.trim();
+  return trimmed ? { ...location, notes: trimmed } : location;
+}
+
 function payloadFromForm(
   form: z.output<typeof newJobFormSchema>,
 ): CreateJobPayload {
@@ -109,8 +155,8 @@ function payloadFromForm(
 
   return {
     sender,
-    collection: form.collection,
-    delivery: form.delivery,
+    collection: withNotes(form.collection, form.collectionNotes),
+    delivery: withNotes(form.delivery, form.deliveryNotes),
     contents: form.contents,
     serviceAreas: form.serviceAreas,
   };
@@ -362,6 +408,13 @@ export function NewJobDrawer({
                 error={errors.collection}
                 lookup={placesLookup}
               />
+              <NotesField
+                id="collection-notes"
+                value={form.collectionNotes}
+                onChange={(value) => updateField("collectionNotes", value)}
+                error={errors.collectionNotes}
+                placeholder="e.g. Path lab"
+              />
             </FormSection>
 
             <FormSection title="Delivery">
@@ -372,6 +425,13 @@ export function NewJobDrawer({
                 onChange={(next) => updateField("delivery", next)}
                 error={errors.delivery}
                 lookup={placesLookup}
+              />
+              <NotesField
+                id="delivery-notes"
+                value={form.deliveryNotes}
+                onChange={(value) => updateField("deliveryNotes", value)}
+                error={errors.deliveryNotes}
+                placeholder="e.g. Reception outside"
               />
             </FormSection>
 

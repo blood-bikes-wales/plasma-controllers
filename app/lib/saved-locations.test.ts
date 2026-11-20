@@ -48,6 +48,16 @@ describe("recordUsedLocations", () => {
     expect(mostUsedLocations()).toEqual([GLAMORGAN, UHW]);
   });
 
+  it("never stores job notes carried on a location", () => {
+    const withNotes = { ...GLAMORGAN, notes: "path lab" } as PlaceLocation;
+    recordUsedLocations([withNotes]);
+    recordUsedLocations([withNotes]);
+
+    const raw = localStorage.getItem(SAVED_LOCATIONS_KEY) ?? "";
+    expect(raw).not.toContain("notes");
+    expect(raw).not.toContain("path lab");
+  });
+
   it("orders recent by last used and most used by count", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);

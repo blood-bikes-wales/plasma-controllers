@@ -81,12 +81,26 @@ function JobRouteSummary({ job }: { job: DeliveryJob }) {
         <span className="size-2.5 shrink-0 rounded-full border-2 border-bb-navy bg-bb-white dark:border-bb-navy-light dark:bg-bb-gray-700" />
       </div>
       <div className="min-w-0 space-y-3">
-        <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
-          {job.collection.address}
-        </p>
-        <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
-          {job.delivery.address}
-        </p>
+        <div>
+          <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
+            {job.collection.address}
+          </p>
+          {job.collection.notes ? (
+            <p className="text-sm text-bb-gray-600 dark:text-bb-gray-300">
+              {job.collection.notes}
+            </p>
+          ) : null}
+        </div>
+        <div>
+          <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
+            {job.delivery.address}
+          </p>
+          {job.delivery.notes ? (
+            <p className="text-sm text-bb-gray-600 dark:text-bb-gray-300">
+              {job.delivery.notes}
+            </p>
+          ) : null}
+        </div>
       </div>
     </div>
   );
