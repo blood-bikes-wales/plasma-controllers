@@ -5,6 +5,7 @@ import {
   createPostcodeArea,
   fetchPostcodeAreas,
   importPostcodeAreas,
+  lookupPostcodeArea,
   updatePostcodeArea,
 } from "~/lib/postcode-areas";
 
@@ -83,5 +84,35 @@ describe("postcode-areas client", () => {
     const [, options] = vi.mocked(apiFetch).mock.calls[0] ?? [];
     expect(options?.method).toBe("POST");
     expect(options?.body).toBeInstanceOf(FormData);
+  });
+
+  it("looks up the area for an outward postcode", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({
+      data: {
+        outboundPostcode: "SA1",
+        areaCode: "S",
+        areaFullName: "Swansea",
+      },
+    });
+
+    await expect(lookupPostcodeArea("SA1")).resolves.toEqual({
+      areaCode: "S",
+      areaFullName: "Swansea",
+    });
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/postcode-areas/lookup?postcode=SA1",
+    );
+  });
+
+  it("returns null when the postcode is not mapped", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ data: null });
+
+    await expect(lookupPostcodeArea("ZZ9")).resolves.toBeNull();
+  });
+
+  it("lets a failed lookup reject", async () => {
+    vi.mocked(apiFetch).mockRejectedValue(new Error("boom"));
+
+    await expect(lookupPostcodeArea("SA1")).rejects.toThrow("boom");
   });
 });

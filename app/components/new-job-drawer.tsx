@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
 import { FieldError } from "~/components/field-error";
@@ -25,8 +25,17 @@ import {
   type PlaceLocation,
 } from "~/lib/jobs";
 import type { PlacesLookup } from "~/lib/places";
+import { outwardPostcode } from "~/lib/postcode";
+import {
+  lookupPostcodeArea as defaultLookupPostcodeArea,
+  type PostcodeAreaMatch,
+} from "~/lib/postcode-areas";
 import { recordUsedLocations } from "~/lib/saved-locations";
-import { fetchServiceAreas, type ServiceAreaOption } from "~/lib/service-areas";
+import {
+  fetchServiceAreas,
+  type ServiceAreaOption,
+  serviceAreaLabel,
+} from "~/lib/service-areas";
 import { apiFieldErrors, fieldErrors, ukPhoneSchema } from "~/lib/validation";
 
 const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
@@ -97,7 +106,53 @@ type NewJobDrawerProps = {
   placesLookup?: PlacesLookup;
   createJob?: (payload: CreateJobPayload) => Promise<DeliveryJob>;
   serviceAreas?: ServiceAreaOption[];
+  lookupPostcodeArea?: (postcode: string) => Promise<PostcodeAreaMatch | null>;
 };
+
+type PlaceSlot = "collection" | "delivery";
+
+const PLACE_SLOTS: readonly PlaceSlot[] = ["collection", "delivery"];
+
+/** A service area ticked automatically because of a place. */
+type AutoPick = { code: string; name: string };
+
+type AutoPicks = Record<PlaceSlot, AutoPick | null>;
+
+const NO_AUTO_PICKS: AutoPicks = { collection: null, delivery: null };
+
+function otherSlot(slot: PlaceSlot): PlaceSlot {
+  return slot === "collection" ? "delivery" : "collection";
+}
+
+/** Short sentences saying which ticked areas came from the chosen places. */
+function autoPickHints(
+  picks: AutoPicks,
+  ticked: readonly string[],
+  areas: readonly ServiceAreaOption[],
+): string[] {
+  const active = PLACE_SLOTS.flatMap((slot) => {
+    const pick = picks[slot];
+    return pick && ticked.includes(pick.code) ? [{ slot, pick }] : [];
+  });
+
+  const hints: string[] = [];
+  for (const { slot, pick } of active) {
+    const name = serviceAreaLabel(pick.code, areas);
+    const label = name === pick.code ? pick.name : name;
+    const sharing = active.filter((item) => item.pick.code === pick.code);
+    if (sharing.length > 1) {
+      if (slot === "collection") {
+        hints.push(
+          `${label} selected from the collection and delivery locations`,
+        );
+      }
+      continue;
+    }
+    hints.push(`${label} selected from the ${slot} location`);
+  }
+
+  return hints;
+}
 
 function FormSection({
   title,
@@ -253,6 +308,7 @@ export function NewJobDrawer({
   placesLookup,
   createJob = createDeliveryJob,
   serviceAreas: serviceAreasProp,
+  lookupPostcodeArea = defaultLookupPostcodeArea,
 }: NewJobDrawerProps) {
   const [form, setForm] = useState<NewJobFormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -262,9 +318,36 @@ export function NewJobDrawer({
     serviceAreasProp ?? [],
   );
   const [areasError, setAreasError] = useState<string | undefined>();
+  const [autoPicks, setAutoPicks] = useState<AutoPicks>(NO_AUTO_PICKS);
+
+  // Automatic service-area ticks. These live in refs so a lookup that resolves
+  // late reads the current state, not the state it was started with.
+  // - autoRef: the area each place ticked (or shares with the other place).
+  // - manualRef: areas the controller ticked or unticked by hand; these are
+  //   never changed automatically for the rest of this form.
+  // - lookupIds: bumped whenever a place changes or the form resets, so only
+  //   the latest lookup for a place may apply its result.
+  const autoRef = useRef<AutoPicks>(NO_AUTO_PICKS);
+  const manualRef = useRef<Set<string>>(new Set());
+  const lookupIds = useRef<Record<PlaceSlot, number>>({
+    collection: 0,
+    delivery: 0,
+  });
+  const serviceAreasRef = useRef(serviceAreas);
+  serviceAreasRef.current = serviceAreas;
+  const lookupRef = useRef(lookupPostcodeArea);
+  lookupRef.current = lookupPostcodeArea;
 
   useEffect(() => {
     if (!open) {
+      // Closing invalidates any lookup still in flight and forgets every pick.
+      lookupIds.current = {
+        collection: lookupIds.current.collection + 1,
+        delivery: lookupIds.current.delivery + 1,
+      };
+      autoRef.current = NO_AUTO_PICKS;
+      manualRef.current = new Set();
+      setAutoPicks(NO_AUTO_PICKS);
       setForm(EMPTY_FORM);
       setErrors({});
       setFormError(undefined);
@@ -316,7 +399,113 @@ export function NewJobDrawer({
     });
   }
 
+  function removeServiceAreas(codes: string[]) {
+    if (codes.length === 0) {
+      return;
+    }
+    setForm((current) => ({
+      ...current,
+      serviceAreas: current.serviceAreas.filter(
+        (value) => !codes.includes(value),
+      ),
+    }));
+  }
+
+  function addAutoServiceArea(code: string) {
+    setForm((current) =>
+      current.serviceAreas.includes(code)
+        ? current
+        : { ...current, serviceAreas: [...current.serviceAreas, code] },
+    );
+    setErrors((current) => {
+      if (!("serviceAreas" in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next.serviceAreas;
+      return next;
+    });
+  }
+
+  function applyAreaMatch(slot: PlaceSlot, match: PostcodeAreaMatch) {
+    const known = serviceAreasRef.current;
+    // Never tick an area the controller can't see or untick.
+    const unknown =
+      known.length > 0 && !known.some((area) => area.code === match.areaCode);
+    if (unknown || manualRef.current.has(match.areaCode)) {
+      return;
+    }
+
+    autoRef.current = {
+      ...autoRef.current,
+      [slot]: { code: match.areaCode, name: match.areaFullName },
+    };
+    setAutoPicks(autoRef.current);
+    addAutoServiceArea(match.areaCode);
+  }
+
+  function startAreaLookup(slot: PlaceSlot, place: PlaceLocation) {
+    const outward = outwardPostcode(place.postcode);
+    if (!outward) {
+      return;
+    }
+
+    lookupIds.current[slot] += 1;
+    const lookupId = lookupIds.current[slot];
+    void lookupRef
+      .current(outward)
+      .then((match) => {
+        // Ignore a result for a place that was changed, cleared or reset since.
+        if (match && lookupIds.current[slot] === lookupId) {
+          applyAreaMatch(slot, match);
+        }
+      })
+      .catch(() => {
+        // A failed lookup changes nothing; areas can still be ticked by hand.
+      });
+  }
+
+  function handlePlaceChange(slot: PlaceSlot, next: PlaceLocation | null) {
+    updateField(slot, next);
+
+    // Invalidate any lookup still in flight for the previous place.
+    lookupIds.current[slot] += 1;
+
+    // Drop what the previous place ticked, unless the controller has touched
+    // that area or the other place still needs it.
+    const previous = autoRef.current[slot];
+    if (previous) {
+      autoRef.current = { ...autoRef.current, [slot]: null };
+      setAutoPicks(autoRef.current);
+      const stillNeeded =
+        autoRef.current[otherSlot(slot)]?.code === previous.code;
+      if (!stillNeeded && !manualRef.current.has(previous.code)) {
+        removeServiceAreas([previous.code]);
+      }
+    }
+
+    if (next) {
+      startAreaLookup(slot, next);
+    }
+  }
+
   function toggleServiceArea(area: string) {
+    // A hand toggle always wins: the area is no longer the places' to change.
+    manualRef.current.add(area);
+    if (PLACE_SLOTS.some((slot) => autoRef.current[slot]?.code === area)) {
+      autoRef.current = {
+        collection:
+          autoRef.current.collection?.code === area
+            ? null
+            : autoRef.current.collection,
+        delivery:
+          autoRef.current.delivery?.code === area
+            ? null
+            : autoRef.current.delivery,
+      };
+      setAutoPicks(autoRef.current);
+    }
+
     setForm((current) => {
       if (current.serviceAreas.includes(area)) {
         return {
@@ -463,7 +652,7 @@ export function NewJobDrawer({
                 id="collection-location"
                 label="Collection location"
                 value={form.collection}
-                onChange={(next) => updateField("collection", next)}
+                onChange={(next) => handlePlaceChange("collection", next)}
                 error={errors.collection}
                 lookup={placesLookup}
               />
@@ -488,7 +677,7 @@ export function NewJobDrawer({
                 id="delivery-location"
                 label="Delivery location"
                 value={form.delivery}
-                onChange={(next) => updateField("delivery", next)}
+                onChange={(next) => handlePlaceChange("delivery", next)}
                 error={errors.delivery}
                 lookup={placesLookup}
               />
@@ -550,6 +739,17 @@ export function NewJobDrawer({
                   </label>
                 ))}
               </fieldset>
+              {autoPickHints(autoPicks, form.serviceAreas, serviceAreas).map(
+                (hint) => (
+                  <p
+                    key={hint}
+                    role="status"
+                    className="text-sm text-bb-gray-500 dark:text-bb-gray-400"
+                  >
+                    {hint}
+                  </p>
+                ),
+              )}
               <FieldError message={errors.serviceAreas ?? areasError} />
             </FormSection>
 

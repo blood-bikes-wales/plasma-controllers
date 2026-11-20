@@ -58,3 +58,28 @@ export function addressWithPostcode(
   const extra = postcodeToShow(address, postcode);
   return extra ? `${address}, ${extra}` : address;
 }
+
+const FULL_POSTCODE_PATTERN = /^([A-Z]{1,2}\d[A-Z\d]?)\d[A-Z]{2}$/;
+const OUTWARD_POSTCODE_PATTERN = /^[A-Z]{1,2}\d[A-Z\d]?$/;
+
+/**
+ * The outward part of a UK postcode ("SA1" from "SA1 1AA"), upper case, which
+ * is what the postcode-area lookup maps to a service area. A bare outward code
+ * is returned as it is. Returns null when there is no postcode or it is not a
+ * UK postcode.
+ */
+export function outwardPostcode(
+  postcode: string | null | undefined,
+): string | null {
+  const compact = postcode?.replace(/\s+/g, "").toUpperCase();
+  if (!compact) {
+    return null;
+  }
+
+  const full = FULL_POSTCODE_PATTERN.exec(compact);
+  if (full) {
+    return full[1];
+  }
+
+  return OUTWARD_POSTCODE_PATTERN.test(compact) ? compact : null;
+}
