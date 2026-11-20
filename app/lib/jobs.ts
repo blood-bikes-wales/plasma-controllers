@@ -86,6 +86,8 @@ export type CreateJobPayload = {
   milkLitres?: number;
   /** Required when `jobType` is "milk", and must be left out otherwise. */
   mother?: JobMother;
+  /** Only valid when `jobType` is "milk": the API rejects true on any other type. */
+  isBereavement?: boolean;
   sender: JobSender;
   collection: PlaceLocation & { notes?: string };
   delivery: PlaceLocation & { notes?: string };
@@ -129,6 +131,12 @@ export type DeliveryJob = {
   jobType?: JobType | string;
   /** Litres of milk; only set when `jobType` is "milk". */
   milkLitres?: number | null;
+  /**
+   * A milk job that is a bereavement. Every role that can view jobs gets it (it
+   * only asks riders and drivers to be sensitive); absent on responses from an
+   * API that predates it, which means false.
+   */
+  isBereavement?: boolean;
   /**
    * Mother's contact on a milk job. Null on other jobs, and absent for roles
    * that cannot create jobs (rider, driver, trustee), so only render it when set.

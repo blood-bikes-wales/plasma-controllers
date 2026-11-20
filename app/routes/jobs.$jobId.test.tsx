@@ -101,6 +101,53 @@ describe("Job detail lifecycle", () => {
     expect(screen.getByText("2 L")).toBeInTheDocument();
   });
 
+  it("shows the Bereavement badge on a bereavement milk job", async () => {
+    const [first, ...rest] = mockActiveJobs;
+    renderJobDetail({
+      active: [
+        { ...first, jobType: "milk", milkLitres: 2.5, isBereavement: true },
+        ...rest,
+      ],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Bereavement")).toBeInTheDocument();
+  });
+
+  it("shows no Bereavement badge when the flag is off or absent", async () => {
+    const [first, ...rest] = mockActiveJobs;
+    renderJobDetail({
+      active: [
+        { ...first, jobType: "milk", milkLitres: 2.5, isBereavement: false },
+        ...rest,
+      ],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Milk")).toBeInTheDocument();
+    expect(screen.queryByText("Bereavement")).not.toBeInTheDocument();
+  });
+
+  it("shows the Bereavement badge to every role, including riders", async () => {
+    const [first, ...rest] = mockActiveJobs;
+    renderJobDetail({
+      roles: [Role.Rider],
+      active: [
+        { ...first, jobType: "milk", milkLitres: 2, isBereavement: true },
+        ...rest,
+      ],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Bereavement")).toBeInTheDocument();
+  });
+
   describe("mother's contact", () => {
     const mother = {
       name: "Megan Evans",
