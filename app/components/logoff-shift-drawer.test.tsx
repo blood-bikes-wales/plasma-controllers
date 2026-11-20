@@ -12,7 +12,53 @@ const SHIFT = {
   startedAt: "Today, 08:15",
 };
 
+const BIKELESS_SHIFT = {
+  ...SHIFT,
+  bikeRegistration: null,
+  startMileage: null,
+};
+
 describe("LogoffShiftDrawer", () => {
+  it("hides the end mileage and bike location for a shift with no bike", () => {
+    render(
+      <LogoffShiftDrawer
+        open
+        onOpenChange={() => {}}
+        shift={BIKELESS_SHIFT}
+        onLogoff={() => {}}
+      />,
+    );
+
+    expect(screen.queryByLabelText("End mileage")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "Bike location" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/No bike was assigned/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Log off" })).toBeEnabled();
+  });
+
+  it("logs off a shift with no bike without mileage or bike location", async () => {
+    const user = userEvent.setup();
+    const onLogoff = vi.fn();
+    render(
+      <LogoffShiftDrawer
+        open
+        onOpenChange={() => {}}
+        shift={BIKELESS_SHIFT}
+        onLogoff={onLogoff}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/Faults/), "Radio flat");
+    await user.click(screen.getByRole("button", { name: "Log off" }));
+
+    expect(onLogoff).toHaveBeenCalledTimes(1);
+    expect(onLogoff.mock.calls[0]).toStrictEqual([
+      "sh1",
+      { faults: "Radio flat" },
+    ]);
+  });
+
   it("renders the shift summary when open", () => {
     render(
       <LogoffShiftDrawer

@@ -22,8 +22,9 @@ import { fieldErrors } from "~/lib/validation";
 type LogoffShiftSummary = {
   id: string;
   riderName: string;
-  bikeRegistration: string;
-  startMileage: number;
+  /** Null when the rider never had a bike: no mileage or bike location is asked for. */
+  bikeRegistration: string | null;
+  startMileage: number | null;
   startedAt: string;
 };
 
@@ -93,6 +94,13 @@ function createLogoffShiftSchema(startMileage: number) {
     });
 }
 
+/** A shift with no bike only has optional faults to record. */
+const logoffWithoutBikeSchema = z.object({
+  endMileage: z.string(),
+  faults: z.string(),
+  mileageExplanation: z.string(),
+});
+
 export function LogoffShiftDrawer({
   open,
   onOpenChange,
@@ -113,8 +121,9 @@ export function LogoffShiftDrawer({
     }
   }, [open]);
 
+  const hasBike = shift?.startMileage !== null;
   const startMileage = shift?.startMileage ?? 0;
-  const change = mileageChange(startMileage, endMileage);
+  const change = hasBike ? mileageChange(startMileage, endMileage) : null;
   const needsExplanation =
     change !== null &&
     isSillyMileageChange(startMileage, startMileage + change);
@@ -125,7 +134,9 @@ export function LogoffShiftDrawer({
     }
   }, [needsExplanation]);
 
-  const schema = createLogoffShiftSchema(startMileage);
+  const schema = hasBike
+    ? createLogoffShiftSchema(startMileage)
+    : logoffWithoutBikeSchema;
   const result = schema.safeParse({ endMileage, faults, mileageExplanation });
   const errors = fieldErrors(result);
   const canSubmit = !!shift && result.success;
@@ -136,6 +147,11 @@ export function LogoffShiftDrawer({
 
   function handleSubmit() {
     if (!shift || !result.success) return;
+
+    if (!hasBike) {
+      onLogoff(shift.id, { faults: result.data.faults.trim() || undefined });
+      return;
+    }
 
     onLogoff(shift.id, {
       endMileage: Number(result.data.endMileage),
@@ -155,9 +171,11 @@ export function LogoffShiftDrawer({
             Log off rider
           </SheetTitle>
           <SheetDescription>
-            {shift
+            {shift?.bikeRegistration
               ? `Record the end mileage and any faults for ${shift.riderName}'s shift on ${shift.bikeRegistration}.`
-              : "Record the end mileage and any faults for this shift."}
+              : shift
+                ? `Record any faults for ${shift.riderName}'s shift. No bike was assigned.`
+                : "Record the end mileage and any faults for this shift."}
           </SheetDescription>
         </SheetHeader>
 
@@ -168,35 +186,44 @@ export function LogoffShiftDrawer({
                 Started{" "}
                 <span className="font-semibold text-bb-gray-900 dark:text-bb-gray-100">
                   {shift?.startedAt}
-                </span>{" "}
-                at{" "}
-                <span className="font-semibold text-bb-gray-900 dark:text-bb-gray-100">
-                  {shift?.startMileage}
-                </span>{" "}
-                miles.
+                </span>
+                {hasBike ? (
+                  <>
+                    {" "}
+                    at{" "}
+                    <span className="font-semibold text-bb-gray-900 dark:text-bb-gray-100">
+                      {shift?.startMileage}
+                    </span>{" "}
+                    miles.
+                  </>
+                ) : (
+                  "."
+                )}
               </p>
             </div>
 
-            <div className="space-y-2">
-              <Label
-                htmlFor="logoff-end-mileage"
-                className="text-bb-gray-700 dark:text-bb-gray-300"
-              >
-                End mileage
-              </Label>
-              <Input
-                id="logoff-end-mileage"
-                type="number"
-                inputMode="numeric"
-                min={0}
-                value={endMileage}
-                onChange={(event) => setEndMileage(event.target.value)}
-                className="h-11 text-base dark:bg-input/30"
-                placeholder="e.g. 15298"
-                aria-invalid={!!errors.endMileage}
-              />
-              <FieldError message={errors.endMileage} />
-            </div>
+            {hasBike ? (
+              <div className="space-y-2">
+                <Label
+                  htmlFor="logoff-end-mileage"
+                  className="text-bb-gray-700 dark:text-bb-gray-300"
+                >
+                  End mileage
+                </Label>
+                <Input
+                  id="logoff-end-mileage"
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={endMileage}
+                  onChange={(event) => setEndMileage(event.target.value)}
+                  className="h-11 text-base dark:bg-input/30"
+                  placeholder="e.g. 15298"
+                  aria-invalid={!!errors.endMileage}
+                />
+                <FieldError message={errors.endMileage} />
+              </div>
+            ) : null}
 
             {needsExplanation ? (
               <Card className="rounded-bb-card border-2 border-bb-warning bg-bb-warning-light py-0 shadow-none dark:bg-bb-warning/20">
@@ -228,24 +255,26 @@ export function LogoffShiftDrawer({
               </Card>
             ) : null}
 
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label
-                  htmlFor="logoff-bike-location"
-                  className="text-bb-gray-700 dark:text-bb-gray-300"
-                >
-                  Bike location
-                </Label>
-                <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
-                  {keptAtHome ? "Kept at home overnight" : "Lockup"}
-                </p>
+            {hasBike ? (
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="logoff-bike-location"
+                    className="text-bb-gray-700 dark:text-bb-gray-300"
+                  >
+                    Bike location
+                  </Label>
+                  <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
+                    {keptAtHome ? "Kept at home overnight" : "Lockup"}
+                  </p>
+                </div>
+                <Switch
+                  id="logoff-bike-location"
+                  checked={keptAtHome}
+                  onCheckedChange={setKeptAtHome}
+                />
               </div>
-              <Switch
-                id="logoff-bike-location"
-                checked={keptAtHome}
-                onCheckedChange={setKeptAtHome}
-              />
-            </div>
+            ) : null}
 
             <div className="space-y-2">
               <Label

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -8,7 +8,11 @@ import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 import { Role } from "~/lib/roles";
 
 import { mockAuthUser } from "../../tests/auth-fixtures";
-import { stubShiftsFetch } from "../../tests/shift-fixtures";
+import {
+  mockMikeShift,
+  mockSarahBikelessShift,
+  stubShiftsFetch,
+} from "../../tests/shift-fixtures";
 import ShiftsPage, { meta } from "./shifts";
 
 afterEach(() => {
@@ -16,9 +20,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderShiftsPage({ roles = [Role.Controller] } = {}) {
+function renderShiftsPage({
+  roles = [Role.Controller],
+  shifts,
+}: {
+  roles?: Role[];
+  shifts?: Parameters<typeof stubShiftsFetch>[1];
+} = {}) {
   setAuthToken("test-google-id-token");
-  vi.stubGlobal("fetch", stubShiftsFetch({ ...mockAuthUser, roles }));
+  vi.stubGlobal("fetch", stubShiftsFetch({ ...mockAuthUser, roles }, shifts));
 
   const router = createMemoryRouter(
     [
@@ -82,6 +92,95 @@ describe("ShiftsPage", () => {
       expect(screen.getByText("2 on duty")).toBeInTheDocument();
     });
     expect(screen.getByText("Sarah Jones")).toBeInTheDocument();
+  });
+
+  it("logs a rider on with only a rider chosen and shows no bike assigned", async () => {
+    const user = userEvent.setup();
+    renderShiftsPage();
+    await waitForShiftsLoaded();
+
+    await user.click(screen.getByRole("button", { name: "Log on rider" }));
+
+    await user.click(screen.getByRole("combobox", { name: "Rider" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Sarah Jones" }),
+    );
+
+    const logOnButton = screen.getByRole("button", { name: "Log on" });
+    expect(logOnButton).toBeEnabled();
+    await user.click(logOnButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("2 on duty")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Sarah Jones")).toBeInTheDocument();
+    expect(screen.getByText("No bike assigned")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Assign bike" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows Assign bike only on a shift with no bike", async () => {
+    renderShiftsPage({ shifts: [mockMikeShift, mockSarahBikelessShift] });
+    await waitForShiftsLoaded();
+
+    expect(screen.getAllByRole("button", { name: "Assign bike" })).toHaveLength(
+      1,
+    );
+    expect(screen.getByText("No bike assigned")).toBeInTheDocument();
+    expect(screen.getByText("CF34 DEF")).toBeInTheDocument();
+  });
+
+  it("assigns a bike later, prefilling its mileage and updating the card", async () => {
+    const user = userEvent.setup();
+    renderShiftsPage({ shifts: [mockMikeShift, mockSarahBikelessShift] });
+    await waitForShiftsLoaded();
+
+    await user.click(screen.getByRole("button", { name: "Assign bike" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const bike = within(dialog).getByRole("combobox", { name: "Bike" });
+    await user.click(bike);
+    const names = (await screen.findAllByRole("option")).map(
+      (option) => option.textContent,
+    );
+    // Only bikes from Sarah's area (E) that are not already on a shift.
+    expect(names).toEqual(["CF12 ABC"]);
+
+    await user.type(bike, "12");
+    await user.click(await screen.findByRole("option", { name: "CF12 ABC" }));
+    expect(within(dialog).getByLabelText("Start mileage")).toHaveValue(15234);
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Assign bike" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("No bike assigned")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("CF12 ABC")).toBeInTheDocument();
+    expect(screen.getByText("Start mileage: 15234")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Assign bike" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("logs off a rider with no bike without asking for mileage", async () => {
+    const user = userEvent.setup();
+    renderShiftsPage({ shifts: [mockSarahBikelessShift] });
+    await waitFor(() => {
+      expect(screen.getByText("Sarah Jones")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Log off" }));
+    expect(screen.queryByLabelText("End mileage")).not.toBeInTheDocument();
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Log off" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("0 on duty")).toBeInTheDocument();
+    });
   });
 
   it("requires a reason when start mileage does not match the bike's last recorded mileage", async () => {

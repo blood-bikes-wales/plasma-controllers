@@ -66,10 +66,41 @@ describe("LogonShiftDrawer", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Rider")).toBeInTheDocument();
     expect(screen.getByLabelText("Bike")).toBeInTheDocument();
+  });
+
+  it("hides the mileage fields until a bike is chosen", async () => {
+    const user = userEvent.setup();
+    renderDrawer();
+
+    expect(screen.queryByLabelText("Start mileage")).not.toBeInTheDocument();
+
+    await selectOption(user, "Rider", "Sarah Jones");
+    expect(screen.queryByLabelText("Start mileage")).not.toBeInTheDocument();
+
+    await selectOption(user, "Bike", "CF12 ABC");
     expect(screen.getByLabelText("Start mileage")).toBeInTheDocument();
   });
 
-  it("disables Log on until rider, bike and start mileage are set", async () => {
+  it("enables Log on with only a rider chosen and submits no bike", async () => {
+    const user = userEvent.setup();
+    const { onLogon } = renderDrawer();
+
+    const submitButton = screen.getByRole("button", { name: "Log on" });
+    expect(submitButton).toBeDisabled();
+
+    await selectOption(user, "Rider", "Sarah Jones");
+    expect(submitButton).toBeEnabled();
+
+    await user.click(submitButton);
+
+    expect(onLogon).toHaveBeenCalledTimes(1);
+    expect(onLogon.mock.calls[0][0]).toStrictEqual({
+      riderId: "r1",
+      riderName: "Sarah Jones",
+    });
+  });
+
+  it("disables Log on until a chosen bike has a valid start mileage", async () => {
     const user = userEvent.setup();
     renderDrawer();
 
@@ -78,7 +109,7 @@ describe("LogonShiftDrawer", () => {
 
     await selectOption(user, "Rider", "Sarah Jones");
     expect(screen.getByDisplayValue("Sarah Jones")).toBeInTheDocument();
-    expect(submitButton).toBeDisabled();
+    expect(submitButton).toBeEnabled();
 
     await selectOption(user, "Bike", "CF12 ABC");
     expect(screen.getByDisplayValue("CF12 ABC")).toBeInTheDocument();
@@ -148,7 +179,7 @@ describe("LogonShiftDrawer", () => {
       renderDrawer();
 
       await selectOption(user, "Rider", "Emma Williams");
-      expect(screen.getByLabelText("Start mileage")).toHaveValue(null);
+      expect(screen.queryByLabelText("Start mileage")).not.toBeInTheDocument();
 
       await selectOption(user, "Bike", "CF12 ABC");
 
@@ -188,7 +219,7 @@ describe("LogonShiftDrawer", () => {
       await user.click(screen.getAllByRole("button", { name: "Change" })[0]);
       await selectOption(user, "Rider", "Mark Evans");
 
-      expect(screen.getByLabelText("Start mileage")).toHaveValue(null);
+      expect(screen.queryByLabelText("Start mileage")).not.toBeInTheDocument();
     });
 
     it("still asks for a reason and submits an edited prefilled value", async () => {
@@ -365,7 +396,7 @@ describe("LogonShiftDrawer", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Start mileage")).toHaveValue(null);
+    expect(screen.queryByLabelText("Start mileage")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Log on" })).toBeDisabled();
   });
 });

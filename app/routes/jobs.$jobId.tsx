@@ -125,7 +125,9 @@ function AllocateJobForm({
         }}
         options={shifts.map((shift) => ({
           value: shift.id,
-          label: `${shift.riderName} · ${shift.bikeRegistration}`,
+          label: shift.bikeRegistration
+            ? `${shift.riderName} · ${shift.bikeRegistration}`
+            : shift.riderName,
         }))}
         placeholder="Search or select a rider on duty…"
         error={fieldError ?? undefined}
