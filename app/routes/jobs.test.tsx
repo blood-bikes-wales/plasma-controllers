@@ -157,6 +157,53 @@ describe("JobsPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the Bereavement badge only on jobs flagged as a bereavement", async () => {
+    const [standard, other] = mockActiveJobs;
+    renderJobsPage("/jobs", {
+      fetchImpl: stubJobsFetch(
+        { ...mockAuthUser, roles: [Role.Controller] },
+        {
+          active: [
+            standard,
+            {
+              ...other,
+              id: "99999999-9999-9999-9999-999999999991",
+              reference: "JB-2001",
+              jobType: "milk",
+              milkLitres: 2.5,
+              isBereavement: true,
+            },
+            {
+              ...other,
+              id: "99999999-9999-9999-9999-999999999992",
+              reference: "JB-2002",
+              jobType: "milk",
+              milkLitres: 2,
+              isBereavement: false,
+            },
+          ],
+        },
+      ),
+    });
+    await waitForJobsLoaded();
+
+    expect(
+      within(screen.getByRole("link", { name: /JB-2001/ })).getByText(
+        "Bereavement",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("link", { name: /JB-2002/ })).queryByText(
+        "Bereavement",
+      ),
+    ).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("link", { name: /JB-1042/ })).queryByText(
+        "Bereavement",
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("does not show the mother's contact on the board", async () => {
     const [standard, other] = mockActiveJobs;
     renderJobsPage("/jobs", {

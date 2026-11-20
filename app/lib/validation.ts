@@ -63,6 +63,7 @@ const API_FIELD_MAP: Record<string, string> = {
   contents: "contents",
   jobType: "jobType",
   milkLitres: "milkLitres",
+  isBereavement: "isBereavement",
   "mother.name": "motherName",
   "mother.phone": "motherPhone",
   "mother.secondaryPhone": "motherSecondaryPhone",

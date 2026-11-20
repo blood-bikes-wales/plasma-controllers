@@ -1429,5 +1429,160 @@ describe("NewJobDrawer service areas from the places", () => {
       ).toBeInTheDocument();
       expect(createJob).toHaveBeenCalledOnce();
     });
+
+    it("shows the Bereavement switch only for Milk, off by default", async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      expect(
+        screen.queryByRole("switch", { name: "Bereavement" }),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      expect(
+        screen.getByRole("switch", { name: "Bereavement" }),
+      ).not.toBeChecked();
+
+      await user.click(screen.getByRole("radio", { name: "Standard" }));
+      expect(
+        screen.queryByRole("switch", { name: "Bereavement" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("toggles Bereavement from the switch and from its label text", async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      const bereavement = screen.getByRole("switch", { name: "Bereavement" });
+
+      await user.click(screen.getByText("Bereavement"));
+      expect(bereavement).toBeChecked();
+
+      await user.click(screen.getByText("Bereavement"));
+      expect(bereavement).not.toBeChecked();
+
+      await user.click(bereavement);
+      expect(bereavement).toBeChecked();
+    });
+
+    it("resets Bereavement to off when switching back to Standard", async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.click(screen.getByRole("switch", { name: "Bereavement" }));
+      expect(screen.getByRole("switch", { name: "Bereavement" })).toBeChecked();
+
+      await user.click(screen.getByRole("radio", { name: "Standard" }));
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+
+      expect(
+        screen.getByRole("switch", { name: "Bereavement" }),
+      ).not.toBeChecked();
+    });
+
+    it("submits isBereavement true for a milk job when switched on", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await fillMother(user);
+      await user.click(screen.getByText("Bereavement"));
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
+      expect(createJob).toHaveBeenCalledWith(
+        expect.objectContaining({ jobType: "milk", isBereavement: true }),
+      );
+    });
+
+    it("submits isBereavement false for a milk job by default", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await fillMother(user);
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
+      const payload = (
+        createJob.mock.calls as unknown as [CreateJobPayload][]
+      )[0][0];
+      expect(payload.isBereavement).toBe(false);
+    });
+
+    it("shows the Bereavement switch off after closing and reopening the drawer", async () => {
+      const user = userEvent.setup();
+      const props = {
+        serviceAreas: mockServiceAreas,
+        onOpenChange: () => {},
+        placesLookup: stubLookup(),
+      };
+      const { rerender } = render(<NewJobDrawer open {...props} />);
+
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.click(screen.getByRole("switch", { name: "Bereavement" }));
+      expect(screen.getByRole("switch", { name: "Bereavement" })).toBeChecked();
+
+      rerender(<NewJobDrawer open={false} {...props} />);
+      rerender(<NewJobDrawer open {...props} />);
+
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      expect(
+        screen.getByRole("switch", { name: "Bereavement" }),
+      ).not.toBeChecked();
+    });
+
+    it("does not send isBereavement for a job switched back to Standard", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.click(screen.getByText("Bereavement"));
+      await user.click(screen.getByRole("radio", { name: "Standard" }));
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
+      const payload = (
+        createJob.mock.calls as unknown as [CreateJobPayload][]
+      )[0][0];
+      expect(payload.jobType).toBe("standard");
+      expect(payload).not.toHaveProperty("isBereavement");
+    });
+
+    it("shows an API 422 for isBereavement on the switch", async () => {
+      const user = userEvent.setup();
+      renderDrawer(
+        vi.fn(async () => {
+          throw new ApiError(422, "Invalid", {
+            body: {
+              errors: {
+                isBereavement: [
+                  "Bereavement can only be recorded for milk jobs.",
+                ],
+              },
+            },
+          });
+        }),
+      );
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await fillMother(user);
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      expect(
+        await screen.findByText(
+          "Bereavement can only be recorded for milk jobs.",
+        ),
+      ).toBeInTheDocument();
+    });
   });
 });

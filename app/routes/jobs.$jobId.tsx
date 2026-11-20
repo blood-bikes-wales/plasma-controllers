@@ -2,7 +2,7 @@ import { ArrowLeft, Phone } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { z } from "zod";
-
+import { BereavementBadge } from "~/components/bereavement-badge";
 import { EstimatedTime } from "~/components/estimated-time";
 import { FieldError } from "~/components/field-error";
 import { JobLegsPanel } from "~/components/job-legs-panel";
@@ -602,7 +602,10 @@ export default function JobDetailPage() {
 
       <Card className="rounded-bb-card border-0 bg-bb-white py-5 shadow-none ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700">
         <CardContent className="space-y-5">
-          <JobTypeLabel job={job} />
+          <div className="space-y-2">
+            <JobTypeLabel job={job} />
+            <BereavementBadge job={job} />
+          </div>
           <JobRouteSummary job={job} />
           {job.mother ? <MotherContact mother={job.mother} /> : null}
           <div className="space-y-1 text-sm text-bb-gray-600 dark:text-bb-gray-300">

@@ -2,6 +2,7 @@ import { Clock, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { AssignRiderDrawer } from "~/components/assign-rider-drawer";
+import { BereavementBadge } from "~/components/bereavement-badge";
 import { EstimatedTime } from "~/components/estimated-time";
 import { JobLegsPanel } from "~/components/job-legs-panel";
 import { JobTypeLabel } from "~/components/job-type-label";
@@ -213,6 +214,7 @@ function JobCard({
             </div>
 
             <JobTypeLabel job={job} />
+            <BereavementBadge job={job} />
 
             <JobRouteIndicator
               pickup={addressWithPostcode(

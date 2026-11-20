@@ -16,6 +16,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "~/components/ui/sheet";
+import { Switch } from "~/components/ui/switch";
 import { ApiError } from "~/lib/api-client";
 import {
   type CreateJobPayload,
@@ -77,15 +78,16 @@ const JOB_TYPE_OPTIONS = [
  */
 const milkFieldsSchema = z.object({
   milkLitres: z.string(),
+  isBereavement: z.boolean(),
   motherName: z.string(),
   motherPhone: z.string(),
   motherSecondaryPhone: z.string(),
 });
 
+type MilkFieldKey = keyof typeof milkFieldsSchema.shape;
+
 /** Every Milk-only form field, so leaving Milk can forget them together. */
-const MILK_FIELD_KEYS = Object.keys(milkFieldsSchema.shape) as Array<
-  keyof typeof milkFieldsSchema.shape
->;
+const MILK_FIELD_KEYS = Object.keys(milkFieldsSchema.shape) as MilkFieldKey[];
 
 const MOTHER_NAME_REQUIRED = "Enter the mother's name";
 const MOTHER_PHONE_REQUIRED = "Enter the mother's phone number";
@@ -204,6 +206,7 @@ type NewJobFormState = z.input<typeof newJobFormSchema>;
 const EMPTY_FORM: NewJobFormState = {
   jobType: "standard",
   milkLitres: "",
+  isBereavement: false,
   motherName: "",
   motherPhone: "",
   motherSecondaryPhone: "",
@@ -273,6 +276,13 @@ function autoPickHints(
   }
 
   return hints;
+}
+
+/** The Milk-only fields back at their empty values. */
+function emptyMilkFields(): Pick<NewJobFormState, MilkFieldKey> {
+  return Object.fromEntries(
+    MILK_FIELD_KEYS.map((key) => [key, EMPTY_FORM[key]]),
+  ) as Pick<NewJobFormState, MilkFieldKey>;
 }
 
 function FormSection({
@@ -362,11 +372,17 @@ function EstimatedTimeField({
 function MilkSection({
   litres,
   onLitresChange,
+  isBereavement,
+  onBereavementChange,
   error,
+  bereavementError,
 }: {
   litres: string;
   onLitresChange: (value: string) => void;
+  isBereavement: boolean;
+  onBereavementChange: (value: boolean) => void;
   error?: string;
+  bereavementError?: string;
 }) {
   return (
     <FormSection title="Milk">
@@ -390,6 +406,29 @@ function MilkSection({
           placeholder="e.g. 2.5"
         />
         <FieldError message={error} />
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <Label
+              htmlFor="milk-bereavement"
+              className="text-bb-gray-700 dark:text-bb-gray-300"
+            >
+              Bereavement
+            </Label>
+            <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
+              Shown as a badge on the job so riders and drivers can be
+              sensitive.
+            </p>
+          </div>
+          <Switch
+            id="milk-bereavement"
+            checked={isBereavement}
+            onCheckedChange={onBereavementChange}
+            aria-invalid={!!bereavementError}
+          />
+        </div>
+        <FieldError message={bereavementError} />
       </div>
     </FormSection>
   );
@@ -518,6 +557,8 @@ function payloadFromForm(
     jobType: form.jobType,
     ...(milk && "litres" in milk ? { milkLitres: milk.litres } : {}),
     ...(mother ? { mother } : {}),
+    // Sent on milk jobs only: the API rejects it on any other type.
+    ...(form.jobType === "milk" ? { isBereavement: form.isBereavement } : {}),
     sender,
     collection: withNotes(form.collection, form.collectionNotes),
     delivery: withNotes(form.delivery, form.deliveryNotes),
@@ -655,16 +696,9 @@ export function NewJobDrawer({
     setForm((current) => ({
       ...current,
       jobType,
-      // Litres and the mother's contact belong to milk jobs only, so leaving
-      // Milk forgets them.
-      ...(jobType === "milk"
-        ? {}
-        : {
-            milkLitres: "",
-            motherName: "",
-            motherPhone: "",
-            motherSecondaryPhone: "",
-          }),
+      // Every Milk-only field (litres, bereavement, the mother's contact)
+      // belongs to milk jobs only, so leaving Milk forgets them.
+      ...(jobType === "milk" ? {} : emptyMilkFields()),
     }));
     setErrors((current) => {
       const next = { ...current };
@@ -909,7 +943,12 @@ export function NewJobDrawer({
               <MilkSection
                 litres={form.milkLitres}
                 onLitresChange={(value) => updateField("milkLitres", value)}
+                isBereavement={form.isBereavement}
+                onBereavementChange={(value) =>
+                  updateField("isBereavement", value)
+                }
                 error={errors.milkLitres}
+                bereavementError={errors.isBereavement}
               />
             ) : null}
 
