@@ -101,6 +101,83 @@ describe("Job detail lifecycle", () => {
     expect(screen.getByText("2 L")).toBeInTheDocument();
   });
 
+  describe("mother's contact", () => {
+    const mother = {
+      name: "Megan Evans",
+      phone: "07700 900101",
+      secondaryPhone: "029 2018 0000",
+    };
+
+    function milkJobWith(extra: Partial<DeliveryJob>): DeliveryJob[] {
+      const [first, ...rest] = mockActiveJobs;
+      return [
+        { ...first, jobType: "milk", milkLitres: 2.5, ...extra },
+        ...rest,
+      ];
+    }
+
+    it("shows the mother's name with both numbers as tel: links", async () => {
+      renderJobDetail({ active: milkJobWith({ mother }) });
+
+      const section = await screen.findByRole("region", {
+        name: "Mother's contact",
+      });
+      expect(section).toHaveTextContent("Megan Evans");
+
+      const first = screen.getByRole("link", {
+        name: "Call Megan Evans: 07700 900101",
+      });
+      expect(first).toHaveAttribute("href", "tel:07700900101");
+      const second = screen.getByRole("link", {
+        name: "Call Megan Evans on second number: 029 2018 0000",
+      });
+      expect(second).toHaveAttribute("href", "tel:02920180000");
+    });
+
+    it("shows a single link when there is no second phone", async () => {
+      renderJobDetail({
+        active: milkJobWith({ mother: { ...mother, secondaryPhone: null } }),
+      });
+
+      await screen.findByRole("region", { name: "Mother's contact" });
+      expect(screen.getAllByRole("link", { name: /^Call Megan/ })).toHaveLength(
+        1,
+      );
+    });
+
+    it("renders nothing when the API did not send the mother", async () => {
+      renderJobDetail({
+        roles: [Role.Rider],
+        active: milkJobWith({}),
+      });
+
+      expect(
+        await screen.findByRole("heading", { name: "JB-1042" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Milk")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: "Mother's contact" }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Megan Evans")).not.toBeInTheDocument();
+    });
+
+    it("renders nothing for a standard job whose mother is null", async () => {
+      renderJobDetail({
+        active: [
+          { ...mockActiveJobs[0], mother: null },
+          ...mockActiveJobs.slice(1),
+        ],
+      });
+
+      expect(
+        await screen.findByRole("heading", { name: "JB-1042" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: "Mother's contact" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("shows no Milk label on a standard job", async () => {
     renderJobDetail();
 

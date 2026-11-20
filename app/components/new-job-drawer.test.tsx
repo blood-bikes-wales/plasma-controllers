@@ -1106,6 +1106,17 @@ describe("NewJobDrawer service areas from the places", () => {
   });
 
   describe("job type", () => {
+    async function fillMother(
+      user: ReturnType<typeof userEvent.setup>,
+      { secondary = "" }: { secondary?: string } = {},
+    ) {
+      await user.type(screen.getByLabelText("Name"), "Megan Evans");
+      await user.type(screen.getByLabelText("Phone"), "07700 900101");
+      if (secondary) {
+        await user.type(screen.getByLabelText(/Second phone/), secondary);
+      }
+    }
+
     function renderDrawer(createJob = vi.fn(async () => CREATED_JOB)) {
       render(
         <NewJobDrawer
@@ -1181,6 +1192,7 @@ describe("NewJobDrawer service areas from the places", () => {
       await fillRequiredFields(user);
       await user.click(screen.getByRole("radio", { name: "Milk" }));
       await user.type(screen.getByLabelText("Litres"), value);
+      await fillMother(user);
       await user.click(screen.getByRole("button", { name: "Create job" }));
 
       expect(await screen.findByText(message)).toBeInTheDocument();
@@ -1194,6 +1206,7 @@ describe("NewJobDrawer service areas from the places", () => {
       await fillRequiredFields(user);
       await user.click(screen.getByRole("radio", { name: "Milk" }));
       await user.type(screen.getByLabelText("Litres"), "2.5");
+      await fillMother(user);
       await user.click(screen.getByRole("button", { name: "Create job" }));
 
       await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
@@ -1218,6 +1231,179 @@ describe("NewJobDrawer service areas from the places", () => {
       )[0][0];
       expect(payload.jobType).toBe("standard");
       expect(payload).not.toHaveProperty("milkLitres");
+      expect(payload).not.toHaveProperty("mother");
+    });
+
+    it("does not ask for the mother's contact on a standard job", () => {
+      renderDrawer();
+
+      expect(
+        screen.queryByRole("heading", { name: "Mother's contact" }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Phone")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Second phone/)).not.toBeInTheDocument();
+    });
+
+    it("shows the Mother's contact section only once Milk is chosen", async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      expect(
+        screen.getByRole("heading", { name: "Mother's contact" }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Name")).toBeInTheDocument();
+      expect(screen.getByLabelText("Phone")).toHaveAttribute("type", "tel");
+      expect(screen.getByLabelText(/Second phone/)).toHaveAttribute(
+        "type",
+        "tel",
+      );
+      expect(screen.getByLabelText("Second phone (optional)")).toBe(
+        screen.getByLabelText(/Second phone/),
+      );
+
+      await user.click(screen.getByRole("radio", { name: "Standard" }));
+      expect(
+        screen.queryByRole("heading", { name: "Mother's contact" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("blocks submit for a milk job until the mother's name and phone are filled", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      expect(
+        await screen.findByText("Enter the mother's name"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Enter the mother's phone number"),
+      ).toBeInTheDocument();
+      expect(createJob).not.toHaveBeenCalled();
+    });
+
+    it("rejects an invalid mother's phone with the UK phone message", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await user.type(screen.getByLabelText("Name"), "Megan Evans");
+      await user.type(screen.getByLabelText("Phone"), "abc");
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      expect(
+        await screen.findByText(
+          "Enter a valid UK phone number, for example 029 2074 7747",
+        ),
+      ).toBeInTheDocument();
+      expect(createJob).not.toHaveBeenCalled();
+    });
+
+    it("rejects an invalid second phone only when something is typed", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await fillMother(user, { secondary: "12345" });
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      expect(
+        await screen.findByText(
+          "Enter a valid UK phone number, for example 029 2074 7747",
+        ),
+      ).toBeInTheDocument();
+      expect(createJob).not.toHaveBeenCalled();
+    });
+
+    it("submits the mother's contact, trimmed, with both numbers", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await fillMother(user, { secondary: "029 2018 0000" });
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
+      const payload = (
+        createJob.mock.calls as unknown as [CreateJobPayload][]
+      )[0][0];
+      expect(payload.mother).toEqual({
+        name: "Megan Evans",
+        phone: "07700 900101",
+        secondaryPhone: "029 2018 0000",
+      });
+    });
+
+    it("leaves the second phone out of the payload when blank", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await fillMother(user);
+      await user.type(screen.getByLabelText(/Second phone/), "   ");
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
+      const payload = (
+        createJob.mock.calls as unknown as [CreateJobPayload][]
+      )[0][0];
+      expect(payload.mother).toEqual({
+        name: "Megan Evans",
+        phone: "07700 900101",
+      });
+    });
+
+    it("forgets the mother's contact when switching back to Standard", async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Name"), "Megan Evans");
+      await user.click(screen.getByRole("radio", { name: "Standard" }));
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+
+      expect(screen.getByLabelText("Name")).toHaveValue("");
+    });
+
+    it("shows API 422 errors on the mother's fields", async () => {
+      const user = userEvent.setup();
+      renderDrawer(
+        vi.fn(async () => {
+          throw new ApiError(422, "Invalid", {
+            body: {
+              errors: {
+                "mother.name": ["Enter the mother's name."],
+                "mother.phone": ["Enter a valid UK phone number."],
+                "mother.secondaryPhone": ["Second number is not valid."],
+              },
+            },
+          });
+        }),
+      );
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await fillMother(user);
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      expect(
+        await screen.findByText("Enter the mother's name."),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Enter a valid UK phone number.")).toBeVisible();
+      expect(screen.getByText("Second number is not valid.")).toBeVisible();
     });
 
     it("shows an API 422 for litres on the Litres field", async () => {
@@ -1235,6 +1421,7 @@ describe("NewJobDrawer service areas from the places", () => {
       await fillRequiredFields(user);
       await user.click(screen.getByRole("radio", { name: "Milk" }));
       await user.type(screen.getByLabelText("Litres"), "5");
+      await fillMother(user);
       await user.click(screen.getByRole("button", { name: "Create job" }));
 
       expect(

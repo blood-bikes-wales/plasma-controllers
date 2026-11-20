@@ -30,6 +30,17 @@ export type JobStatus =
   | "Delivered"
   | "Cancelled";
 
+/**
+ * The mother's own contact on a milk job (the caller is the milk bank). Personal
+ * data about a member of the public: the API only sends it to roles that can
+ * create jobs, so `DeliveryJob.mother` is absent for everyone else.
+ */
+export type JobMother = {
+  name: string;
+  phone: string;
+  secondaryPhone?: string | null;
+};
+
 export type JobType = "standard" | "milk";
 
 export const JOB_TYPES: readonly JobType[] = ["standard", "milk"];
@@ -73,6 +84,8 @@ export type CreateJobPayload = {
   jobType: JobType;
   /** Required when `jobType` is "milk", and must be left out otherwise. */
   milkLitres?: number;
+  /** Required when `jobType` is "milk", and must be left out otherwise. */
+  mother?: JobMother;
   sender: JobSender;
   collection: PlaceLocation & { notes?: string };
   delivery: PlaceLocation & { notes?: string };
@@ -116,6 +129,11 @@ export type DeliveryJob = {
   jobType?: JobType | string;
   /** Litres of milk; only set when `jobType` is "milk". */
   milkLitres?: number | null;
+  /**
+   * Mother's contact on a milk job. Null on other jobs, and absent for roles
+   * that cannot create jobs (rider, driver, trustee), so only render it when set.
+   */
+  mother?: JobMother | null;
   isRelay?: boolean;
   parentJobId?: string | null;
   legNumber?: number | null;
