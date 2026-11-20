@@ -1,7 +1,8 @@
 import { ArrowLeft, CalendarCheck, Phone } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import { z } from "zod";
+import { AllocateJobForm } from "~/components/allocate-job-form";
 import { BereavementBadge } from "~/components/bereavement-badge";
 import { EstimatedTime } from "~/components/estimated-time";
 import { FieldError } from "~/components/field-error";
@@ -34,6 +35,7 @@ import {
   fromDateTimeLocalValue,
   getJobDate,
   isRelayJob,
+  isStaleJobError,
   type JobDeliveryRecord,
   type JobMother,
   jobErrorMessage,
@@ -50,10 +52,6 @@ import { cn } from "~/lib/utils";
 import { fieldErrors } from "~/lib/validation";
 
 import type { Route } from "./+types/jobs.$jobId";
-
-const allocateSchema = z.object({
-  shiftId: z.string().min(1, "Select a rider on an active shift"),
-});
 
 const collectSchema = z.object({
   contentsConfirmed: z.enum(["yes", "no"], {
@@ -201,59 +199,6 @@ function JobRouteSummary({ job }: { job: DeliveryJob }) {
         </div>
       </div>
     </div>
-  );
-}
-
-function AllocateJobForm({
-  shifts,
-  isSubmitting,
-  onSubmit,
-}: {
-  shifts: ActiveShift[];
-  isSubmitting: boolean;
-  onSubmit: (shiftId: string) => Promise<void>;
-}) {
-  const [shiftId, setShiftId] = useState<string | null>(null);
-  const [fieldError, setFieldError] = useState<string | null>(null);
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFieldError(null);
-
-    const parsed = allocateSchema.safeParse({ shiftId: shiftId ?? "" });
-    const errors = fieldErrors(parsed);
-    if (!parsed.success) {
-      setFieldError(errors.shiftId ?? "Select a rider on an active shift");
-      return;
-    }
-
-    await onSubmit(parsed.data.shiftId);
-  }
-
-  return (
-    <form className="space-y-4" onSubmit={handleSubmit}>
-      <SearchableSelectField
-        id="allocate-shift"
-        label="Active shift rider"
-        value={shiftId}
-        onChange={(value) => {
-          setShiftId(value);
-          setFieldError(null);
-        }}
-        options={shifts.map((shift) => ({
-          value: shift.id,
-          label: shift.bikeRegistration
-            ? `${shift.riderName} · ${shift.bikeRegistration}`
-            : shift.riderName,
-        }))}
-        placeholder="Search or select a rider on duty…"
-        error={fieldError ?? undefined}
-        emptyMessage="No riders are currently on an active shift."
-      />
-      <Button type="submit" disabled={isSubmitting || shifts.length === 0}>
-        Allocate rider
-      </Button>
-    </form>
   );
 }
 
@@ -561,6 +506,10 @@ export default function JobDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The job the page is on now, so a slow request for a job the user has left
+  // cannot overwrite the one on screen.
+  const currentJobIdRef = useRef(jobId);
+  currentJobIdRef.current = jobId;
 
   const load = useCallback(async () => {
     const [nextJob, nextShifts] = await Promise.all([
@@ -609,6 +558,69 @@ export default function JobDetailPage() {
     }
   }
 
+  /** Re-read who is on shift (keeping the old list if that fails), so a rider who has since logged off is not offered again. */
+  async function refreshShifts() {
+    try {
+      setShifts(await fetchActiveShifts());
+    } catch {
+      // Keep the list we have.
+    }
+  }
+
+  /**
+   * The API said our copy of the job is stale (someone else allocated or
+   * collected it, or it is gone): read it again once. Never retries the action,
+   * so it cannot loop. If the job can no longer be allocated the field below
+   * disappears, so say why at page level instead. A failed read changes nothing.
+   */
+  async function reloadJob(requestedJobId: string, message: string) {
+    try {
+      const fresh = await fetchJobById(requestedJobId);
+      if (currentJobIdRef.current !== requestedJobId) {
+        return;
+      }
+
+      setJob(fresh);
+      if (
+        message &&
+        (!fresh || !allowedActionsForJob(fresh).includes("allocate"))
+      ) {
+        setActionError(message);
+      }
+    } catch {
+      // Keep what is on screen.
+    }
+  }
+
+  /** Unlike runAction, rejects on failure: the allocate field shows the error itself. */
+  async function allocateRider(shiftId: string) {
+    if (!job) {
+      return;
+    }
+
+    const requestedJobId = job.id;
+    setActionError(null);
+    setIsSubmitting(true);
+    try {
+      const updated = await performJobAction(requestedJobId, "allocate", {
+        shiftId,
+      });
+      if (currentJobIdRef.current === requestedJobId) {
+        setJob(updated);
+      }
+    } catch (caught: unknown) {
+      void refreshShifts();
+      if (isStaleJobError(caught)) {
+        void reloadJob(requestedJobId, jobErrorMessage(caught, ""));
+      }
+      throw caught;
+    } finally {
+      setIsSubmitting(false);
+    }
+
+    void refreshShifts();
+  }
+
   if (isLoading) {
     return (
       <p className="py-12 text-center text-base text-bb-gray-500 dark:text-bb-gray-400">
@@ -642,6 +654,10 @@ export default function JobDetailPage() {
   }
 
   const allowed = allowedActionsForJob(job);
+  // Allocate stays allowed on an Allocated job (until it is collected), so the
+  // same form changes the rider. An API that does not allow it shows nothing.
+  const allocateHeading =
+    job.status === "Allocated" ? "Change rider" : "Allocate rider";
   const waitingForLeg = waitingForLegMessage(job);
   const reference = displayJobReference(job);
   const createdLabel = formatJobCreatedAt(job.createdAt);
@@ -777,18 +793,18 @@ export default function JobDetailPage() {
 
       {canManage && allowed.includes("allocate") ? (
         <section
-          aria-label="Allocate job"
+          aria-label={allocateHeading}
           className="rounded-bb-card bg-bb-white p-5 ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700"
         >
           <h2 className="mb-4 text-lg font-bold text-bb-gray-900 dark:text-bb-gray-100">
-            Allocate rider
+            {allocateHeading}
           </h2>
           <AllocateJobForm
             shifts={shifts}
+            currentShiftId={job.allocatedRider?.shiftId ?? null}
+            currentRiderName={job.allocatedRider?.name ?? null}
             isSubmitting={isSubmitting}
-            onSubmit={(shiftId) =>
-              runAction(() => performJobAction(job.id, "allocate", { shiftId }))
-            }
+            onSubmit={allocateRider}
           />
         </section>
       ) : null}
