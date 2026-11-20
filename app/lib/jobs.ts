@@ -71,7 +71,9 @@ export type JobCollectionRecord = {
 };
 
 export type JobDeliveryRecord = {
-  recipient: string;
+  /** Null when `noRecipient` is true. */
+  recipient: string | null;
+  noRecipient: boolean;
   deliveredAt: string | null;
 };
 
@@ -108,7 +110,9 @@ export type CollectJobPayload = {
 };
 
 export type DeliverJobPayload = {
-  recipient: string;
+  /** Required unless `noRecipient` is true. */
+  recipient?: string;
+  noRecipient: boolean;
   deliveredAt?: string;
 };
 

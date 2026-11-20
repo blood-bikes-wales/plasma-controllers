@@ -156,7 +156,11 @@ function applyLifecycleAction(
       status: "Delivered",
       allowedActions: [],
       deliveryRecord: {
-        recipient: String(payload.recipient ?? "Recipient"),
+        recipient:
+          payload.noRecipient === true
+            ? null
+            : String(payload.recipient ?? "Recipient"),
+        noRecipient: payload.noRecipient === true,
         deliveredAt: new Date().toISOString(),
       },
     };
