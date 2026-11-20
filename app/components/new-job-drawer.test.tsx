@@ -314,6 +314,7 @@ describe("NewJobDrawer", () => {
 
     await waitFor(() => {
       expect(createJob).toHaveBeenCalledWith({
+        jobType: "standard",
         sender: {
           name: "Dr. Smith",
           phone: "029 2074 7747",
@@ -1102,5 +1103,144 @@ describe("NewJobDrawer service areas from the places", () => {
 
     await changePlace(user, "Collection location");
     expect(box("Swansea")).toBeChecked();
+  });
+
+  describe("job type", () => {
+    function renderDrawer(createJob = vi.fn(async () => CREATED_JOB)) {
+      render(
+        <NewJobDrawer
+          serviceAreas={mockServiceAreas}
+          open
+          onOpenChange={() => {}}
+          placesLookup={stubLookup()}
+          createJob={createJob}
+        />,
+      );
+      return createJob;
+    }
+
+    it("defaults to Standard and does not ask for litres", () => {
+      renderDrawer();
+
+      expect(screen.getByRole("radio", { name: "Standard" })).toBeChecked();
+      expect(screen.getByRole("radio", { name: "Milk" })).not.toBeChecked();
+      expect(screen.queryByLabelText("Litres")).not.toBeInTheDocument();
+    });
+
+    it("reveals Litres when Milk is chosen and hides it again for Standard", async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      const litres = screen.getByLabelText("Litres");
+      expect(litres).toHaveAttribute("type", "number");
+      expect(litres).toHaveAttribute("step", "0.1");
+
+      await user.click(screen.getByRole("radio", { name: "Standard" }));
+      expect(screen.queryByLabelText("Litres")).not.toBeInTheDocument();
+    });
+
+    it("blocks submit for a milk job until litres are filled", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      expect(
+        await screen.findByText("Enter how many litres of milk"),
+      ).toBeInTheDocument();
+      expect(createJob).not.toHaveBeenCalled();
+    });
+
+    it("shows the litres error even when other fields are also missing", async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      expect(
+        await screen.findByText("Enter the caller's name"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Enter how many litres of milk"),
+      ).toBeInTheDocument();
+    });
+
+    it.each([
+      ["0", "Litres must be a number greater than 0"],
+      ["-1", "Litres must be a number greater than 0"],
+      ["100.5", "Litres must be 100 or fewer"],
+      ["2.555", "Litres can have at most 2 decimal places"],
+    ])("rejects %s litres", async (value, message) => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), value);
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(createJob).not.toHaveBeenCalled();
+    });
+
+    it("submits a milk job with its litres as a number", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "2.5");
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
+      expect(createJob).toHaveBeenCalledWith(
+        expect.objectContaining({ jobType: "milk", milkLitres: 2.5 }),
+      );
+    });
+
+    it("does not send litres for a job switched back to Standard", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer();
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "3");
+      await user.click(screen.getByRole("radio", { name: "Standard" }));
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
+      const payload = (
+        createJob.mock.calls as unknown as [CreateJobPayload][]
+      )[0][0];
+      expect(payload.jobType).toBe("standard");
+      expect(payload).not.toHaveProperty("milkLitres");
+    });
+
+    it("shows an API 422 for litres on the Litres field", async () => {
+      const user = userEvent.setup();
+      const createJob = renderDrawer(
+        vi.fn(async () => {
+          throw new ApiError(422, "Invalid", {
+            body: {
+              errors: { milkLitres: ["Litres must not be more than 100."] },
+            },
+          });
+        }),
+      );
+
+      await fillRequiredFields(user);
+      await user.click(screen.getByRole("radio", { name: "Milk" }));
+      await user.type(screen.getByLabelText("Litres"), "5");
+      await user.click(screen.getByRole("button", { name: "Create job" }));
+
+      expect(
+        await screen.findByText("Litres must not be more than 100."),
+      ).toBeInTheDocument();
+      expect(createJob).toHaveBeenCalledOnce();
+    });
   });
 });

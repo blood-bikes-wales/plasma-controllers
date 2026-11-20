@@ -118,6 +118,45 @@ describe("JobsPage", () => {
     expect(screen.getAllByText("Open").length).toBeGreaterThan(0);
   });
 
+  it("shows the Milk label with litres on a milk job card only", async () => {
+    const [standard, other] = mockActiveJobs;
+    renderJobsPage("/jobs", {
+      fetchImpl: stubJobsFetch(
+        { ...mockAuthUser, roles: [Role.Controller] },
+        {
+          active: [
+            { ...standard, jobType: "standard", milkLitres: null },
+            {
+              ...other,
+              id: "99999999-9999-9999-9999-999999999991",
+              reference: "JB-2001",
+              jobType: "milk",
+              milkLitres: 2.5,
+            },
+            {
+              ...other,
+              id: "99999999-9999-9999-9999-999999999992",
+              reference: "JB-2002",
+              jobType: "milk",
+              milkLitres: 2,
+            },
+          ],
+        },
+      ),
+    });
+    await waitForJobsLoaded();
+
+    const milkCard = screen.getByRole("link", { name: /JB-2001/ });
+    expect(within(milkCard).getByText("Milk")).toBeInTheDocument();
+    expect(within(milkCard).getByText("2.5 L")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("link", { name: /JB-2002/ })).getByText("2 L"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("link", { name: /JB-1042/ })).queryByText("Milk"),
+    ).not.toBeInTheDocument();
+  });
+
   it("filters jobs when searching", async () => {
     const user = userEvent.setup();
     renderJobsPage();

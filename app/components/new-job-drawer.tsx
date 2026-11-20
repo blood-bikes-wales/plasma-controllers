@@ -7,6 +7,7 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "~/components/ui/radio-group";
 import {
   Sheet,
   SheetContent,
@@ -22,6 +23,7 @@ import {
   createDeliveryJob,
   type DeliveryJob,
   jobErrorMessage,
+  MAX_MILK_LITRES,
   type PlaceLocation,
 } from "~/lib/jobs";
 import type { PlacesLookup } from "~/lib/places";
@@ -57,7 +59,50 @@ const estimatedTimeSchema = z
     message: "Enter a valid time",
   });
 
-const newJobFormSchema = z.object({
+const JOB_TYPE_OPTIONS = [
+  { value: "standard", label: "Standard" },
+  { value: "milk", label: "Milk" },
+] as const;
+
+/**
+ * Fields that only apply to one job type live in their own schema and are
+ * checked by `validateTypeFields`, so a new Milk-only field is added here and
+ * to `MilkSection`, not threaded through the whole form.
+ */
+const milkFieldsSchema = z.object({
+  milkLitres: z.string(),
+});
+
+const MILK_LITRES_REQUIRED = "Enter how many litres of milk";
+const MILK_LITRES_INVALID = "Litres must be a number greater than 0";
+const MILK_LITRES_TOO_MANY = `Litres must be ${MAX_MILK_LITRES} or fewer`;
+const MILK_LITRES_DECIMALS = "Litres can have at most 2 decimal places";
+
+/** Parses the Litres input; returns the number or the message to show. */
+function parseMilkLitres(raw: string): { litres: number } | { error: string } {
+  const trimmed = raw.trim();
+  if (trimmed === "") {
+    return { error: MILK_LITRES_REQUIRED };
+  }
+
+  const litres = Number(trimmed);
+  if (!Number.isFinite(litres) || litres <= 0) {
+    return { error: MILK_LITRES_INVALID };
+  }
+
+  if (litres > MAX_MILK_LITRES) {
+    return { error: MILK_LITRES_TOO_MANY };
+  }
+
+  if (Math.round(litres * 100) / 100 !== litres) {
+    return { error: MILK_LITRES_DECIMALS };
+  }
+
+  return { litres };
+}
+
+const newJobBaseSchema = z.object({
+  jobType: z.enum(["standard", "milk"]),
   senderName: z.string().trim().min(1, "Enter the caller's name"),
   senderPhone: z
     .string()
@@ -81,11 +126,34 @@ const newJobFormSchema = z.object({
   estimatedDelivery: estimatedTimeSchema,
   contents: z.string().trim().min(1, "Describe the item or contents"),
   serviceAreas: z.array(z.string()).min(1, "Choose at least one service area"),
+  ...milkFieldsSchema.shape,
 });
+
+function validateTypeFields(
+  form: z.infer<typeof newJobBaseSchema>,
+  ctx: z.RefinementCtx,
+) {
+  if (form.jobType !== "milk") {
+    return;
+  }
+
+  const parsed = parseMilkLitres(form.milkLitres);
+  if ("error" in parsed) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["milkLitres"],
+      message: parsed.error,
+    });
+  }
+}
+
+const newJobFormSchema = newJobBaseSchema.superRefine(validateTypeFields);
 
 type NewJobFormState = z.input<typeof newJobFormSchema>;
 
 const EMPTY_FORM: NewJobFormState = {
+  jobType: "standard",
+  milkLitres: "",
   senderName: "",
   senderPhone: "",
   senderOrganisation: "",
@@ -238,6 +306,42 @@ function EstimatedTimeField({
   );
 }
 
+function MilkSection({
+  litres,
+  onLitresChange,
+  error,
+}: {
+  litres: string;
+  onLitresChange: (value: string) => void;
+  error?: string;
+}) {
+  return (
+    <FormSection title="Milk">
+      <div className="space-y-2">
+        <Label
+          htmlFor="milk-litres"
+          className="text-bb-gray-700 dark:text-bb-gray-300"
+        >
+          Litres
+        </Label>
+        <Input
+          id="milk-litres"
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          min="0"
+          value={litres}
+          onChange={(event) => onLitresChange(event.target.value)}
+          aria-invalid={!!error}
+          className="h-11 text-base dark:bg-input/30"
+          placeholder="e.g. 2.5"
+        />
+        <FieldError message={error} />
+      </div>
+    </FormSection>
+  );
+}
+
 function withNotes(
   location: PlaceLocation,
   notes: string,
@@ -265,7 +369,12 @@ function payloadFromForm(
   );
   const estimatedDeliveryAt = combineDayAndTime(today, form.estimatedDelivery);
 
+  const milk =
+    form.jobType === "milk" ? parseMilkLitres(form.milkLitres) : null;
+
   return {
+    jobType: form.jobType,
+    ...(milk && "litres" in milk ? { milkLitres: milk.litres } : {}),
     sender,
     collection: withNotes(form.collection, form.collectionNotes),
     delivery: withNotes(form.delivery, form.deliveryNotes),
@@ -395,6 +504,26 @@ export function NewJobDrawer({
       }
       const next = { ...current };
       delete next[field];
+      return next;
+    });
+  }
+
+  function handleJobTypeChange(jobType: NewJobFormState["jobType"]) {
+    setForm((current) => ({
+      ...current,
+      jobType,
+      // Litres belong to milk jobs only, so leaving Milk forgets them.
+      milkLitres: jobType === "milk" ? current.milkLitres : "",
+    }));
+    setErrors((current) => {
+      if (!("jobType" in current) && !("milkLitres" in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next.jobType;
+      if (jobType !== "milk") {
+        delete next.milkLitres;
+      }
       return next;
     });
   }
@@ -573,7 +702,9 @@ export function NewJobDrawer({
           </SheetDescription>
         </SheetHeader>
 
+        {/* noValidate: Zod owns validation, so Litres (step 0.1) shows our inline errors, not the browser's step popover. */}
         <form
+          noValidate
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={(event) => {
             event.preventDefault();
@@ -581,6 +712,55 @@ export function NewJobDrawer({
           }}
         >
           <div className="flex-1 space-y-4 overflow-y-auto scroll-pb-10 px-5 py-5 pb-10">
+            <FormSection title="Job type">
+              <p
+                id="job-type-legend"
+                className="text-sm font-medium text-bb-gray-700 dark:text-bb-gray-300"
+              >
+                What is being collected?
+              </p>
+              <RadioGroup
+                aria-labelledby="job-type-legend"
+                value={form.jobType}
+                onValueChange={(value) => {
+                  const option = JOB_TYPE_OPTIONS.find(
+                    (candidate) => candidate.value === value,
+                  );
+                  if (option) {
+                    handleJobTypeChange(option.value);
+                  }
+                }}
+                className="gap-1"
+              >
+                {JOB_TYPE_OPTIONS.map((option) => {
+                  const inputId = `job-type-${option.value}`;
+                  return (
+                    <div
+                      key={option.value}
+                      className="flex min-h-11 items-center gap-3 px-1"
+                    >
+                      <RadioGroupItem value={option.value} id={inputId} />
+                      <Label
+                        htmlFor={inputId}
+                        className="text-base font-medium text-bb-gray-900 dark:text-bb-gray-100"
+                      >
+                        {option.label}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </RadioGroup>
+              <FieldError message={errors.jobType} />
+            </FormSection>
+
+            {form.jobType === "milk" ? (
+              <MilkSection
+                litres={form.milkLitres}
+                onLitresChange={(value) => updateField("milkLitres", value)}
+                error={errors.milkLitres}
+              />
+            ) : null}
+
             <FormSection title="Sender">
               <div className="space-y-2">
                 <Label

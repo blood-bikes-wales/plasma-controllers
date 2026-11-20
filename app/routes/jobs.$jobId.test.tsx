@@ -74,6 +74,42 @@ describe("Job detail lifecycle", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the Milk label and litres on a milk job", async () => {
+    const [first, ...rest] = mockActiveJobs;
+    renderJobDetail({
+      active: [{ ...first, jobType: "milk", milkLitres: 2.5 }, ...rest],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Milk")).toBeInTheDocument();
+    expect(screen.getByText("2.5 L")).toBeInTheDocument();
+  });
+
+  it("shows Milk and litres to every role, including riders", async () => {
+    const [first, ...rest] = mockActiveJobs;
+    renderJobDetail({
+      roles: [Role.Rider],
+      active: [{ ...first, jobType: "milk", milkLitres: 2 }, ...rest],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Milk")).toBeInTheDocument();
+    expect(screen.getByText("2 L")).toBeInTheDocument();
+  });
+
+  it("shows no Milk label on a standard job", async () => {
+    renderJobDetail();
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Milk")).not.toBeInTheDocument();
+  });
+
   it("hides lifecycle controls for riders", async () => {
     renderJobDetail({ roles: [Role.Rider] });
 

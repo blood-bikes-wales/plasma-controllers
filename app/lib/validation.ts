@@ -61,6 +61,8 @@ const API_FIELD_MAP: Record<string, string> = {
   estimatedCollectionAt: "estimatedCollection",
   estimatedDeliveryAt: "estimatedDelivery",
   contents: "contents",
+  jobType: "jobType",
+  milkLitres: "milkLitres",
   serviceAreas: "serviceAreas",
   registration: "registration",
   area: "area",

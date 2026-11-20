@@ -30,6 +30,16 @@ export type JobStatus =
   | "Delivered"
   | "Cancelled";
 
+export type JobType = "standard" | "milk";
+
+export const JOB_TYPES: readonly JobType[] = ["standard", "milk"];
+
+/**
+ * Upper limit for litres on one milk job. Mirrors `App\Enums\JobType::MAX_MILK_LITRES`
+ * in plasma-api; to confirm with controllers. Keep the two in step.
+ */
+export const MAX_MILK_LITRES = 100;
+
 export type JobListScope = "active" | "completed";
 
 export type JobLifecycleAction = "allocate" | "collect" | "deliver" | "cancel";
@@ -60,6 +70,9 @@ export type JobCancellation = {
 };
 
 export type CreateJobPayload = {
+  jobType: JobType;
+  /** Required when `jobType` is "milk", and must be left out otherwise. */
+  milkLitres?: number;
   sender: JobSender;
   collection: PlaceLocation & { notes?: string };
   delivery: PlaceLocation & { notes?: string };
@@ -99,6 +112,10 @@ export type DeliveryJob = {
   id: string;
   reference: string;
   status: JobStatus | string;
+  /** Absent on responses from an API that predates job types: treat as standard. */
+  jobType?: JobType | string;
+  /** Litres of milk; only set when `jobType` is "milk". */
+  milkLitres?: number | null;
   isRelay?: boolean;
   parentJobId?: string | null;
   legNumber?: number | null;
@@ -224,6 +241,23 @@ export function displayJobReference(
   }
 
   return job.id.slice(-6);
+}
+
+export function isMilkJob(job: Pick<DeliveryJob, "jobType">): boolean {
+  return job.jobType === "milk";
+}
+
+/** "2.5 L", "2 L", "0.25 L". Empty when there is no usable quantity. */
+export function formatMilkLitres(litres: number | null | undefined): string {
+  if (litres === null || litres === undefined || !Number.isFinite(litres)) {
+    return "";
+  }
+
+  const formatted = new Intl.NumberFormat("en-GB", {
+    maximumFractionDigits: 2,
+    useGrouping: false,
+  }).format(litres);
+  return `${formatted} L`;
 }
 
 export function formatJobCreatedAt(createdAt: string | null): string {
