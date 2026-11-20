@@ -6,6 +6,7 @@ import { EstimatedTime } from "~/components/estimated-time";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { type DeliveryJob, displayJobReference } from "~/lib/jobs";
+import { addressWithPostcode } from "~/lib/postcode";
 import { cn } from "~/lib/utils";
 
 function statusBadgeClass(status: string) {
@@ -27,8 +28,10 @@ function statusBadgeClass(status: string) {
 function LegSummary({ leg }: { leg: DeliveryJob }) {
   return (
     <div className="space-y-1 text-sm text-bb-gray-600 dark:text-bb-gray-300">
-      <p>{leg.collection.address}</p>
-      <p>{leg.delivery.address}</p>
+      <p>
+        {addressWithPostcode(leg.collection.address, leg.collection.postcode)}
+      </p>
+      <p>{addressWithPostcode(leg.delivery.address, leg.delivery.postcode)}</p>
       <EstimatedTime label="Arrives" estimatedAt={leg.plannedArrivalAt} />
     </div>
   );

@@ -18,6 +18,7 @@ import type { PlacesLookup } from "~/lib/places";
 const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
   placeId: z.string().min(1),
   address: z.string().min(1),
+  postcode: z.string().nullish(),
   latitude: z.number(),
   longitude: z.number(),
 });

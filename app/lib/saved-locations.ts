@@ -21,6 +21,9 @@ function isPlaceLocation(value: unknown): value is PlaceLocation {
     candidate.placeId.length > 0 &&
     typeof candidate.address === "string" &&
     candidate.address.length > 0 &&
+    (candidate.postcode === undefined ||
+      candidate.postcode === null ||
+      typeof candidate.postcode === "string") &&
     typeof candidate.latitude === "number" &&
     typeof candidate.longitude === "number"
   );
@@ -81,11 +84,19 @@ function uniqueByPlaceId(locations: PlaceLocation[]): PlaceLocation[] {
   });
 }
 
-/** Only the place fields are remembered; anything else on a job stop (e.g. its notes) is dropped. */
-function placeFields(location: PlaceLocation): PlaceLocation {
+/**
+ * Only the place fields are remembered; anything else on a job stop (e.g. its
+ * notes) is dropped. The postcode belongs to the place, so it is kept.
+ */
+function placeFields(
+  location: PlaceLocation,
+  fallbackPostcode?: string | null,
+): PlaceLocation {
+  const postcode = location.postcode?.trim() || fallbackPostcode?.trim();
   return {
     placeId: location.placeId,
     address: location.address,
+    ...(postcode ? { postcode } : {}),
     latitude: location.latitude,
     longitude: location.longitude,
   };
@@ -110,7 +121,8 @@ function upsertLocation(
     }
 
     return {
-      ...placeFields(location),
+      // A place saved before it had a postcode keeps one once any use supplies it, and a use without one does not erase it.
+      ...placeFields(location, item.postcode),
       useCount: item.useCount + 1,
       lastUsedAt: now,
     };
@@ -137,6 +149,7 @@ function toPlaceLocation(saved: SavedLocation): PlaceLocation {
   return {
     placeId: saved.placeId,
     address: saved.address,
+    ...(saved.postcode ? { postcode: saved.postcode } : {}),
     latitude: saved.latitude,
     longitude: saved.longitude,
   };

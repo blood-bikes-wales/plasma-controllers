@@ -3,6 +3,8 @@ import { ApiError, apiFetch } from "~/lib/api-client";
 export type PlaceLocation = {
   placeId: string;
   address: string;
+  /** Google's postal code for the place; absent or null when it has none. */
+  postcode?: string | null;
   latitude: number;
   longitude: number;
 };

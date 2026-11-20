@@ -58,6 +58,42 @@ describe("recordUsedLocations", () => {
     expect(raw).not.toContain("path lab");
   });
 
+  it("keeps the postcode with the saved place in both lists", () => {
+    const withPostcode = { ...GLAMORGAN, postcode: "CF72 8XR" };
+    recordUsedLocations([withPostcode]);
+
+    expect(recentLocations()).toEqual([withPostcode]);
+    expect(mostUsedLocations()).toEqual([withPostcode]);
+  });
+
+  it("does not store a null or blank postcode", () => {
+    recordUsedLocations([{ ...GLAMORGAN, postcode: null }]);
+
+    expect(recentLocations()).toEqual([GLAMORGAN]);
+    expect(localStorage.getItem(SAVED_LOCATIONS_KEY)).not.toContain("postcode");
+  });
+
+  it("keeps a saved postcode when a later use has none, and adds one that was missing", () => {
+    recordUsedLocations([{ ...GLAMORGAN, postcode: "CF72 8XR" }]);
+    recordUsedLocations([GLAMORGAN]);
+    expect(recentLocations()[0].postcode).toBe("CF72 8XR");
+
+    recordUsedLocations([UHW]);
+    recordUsedLocations([{ ...UHW, postcode: "CF14 4XW" }]);
+    expect(
+      recentLocations().find((item) => item.placeId === UHW.placeId)?.postcode,
+    ).toBe("CF14 4XW");
+  });
+
+  it("still loads places saved before postcodes existed", () => {
+    localStorage.setItem(
+      SAVED_LOCATIONS_KEY,
+      JSON.stringify([{ ...GLAMORGAN, useCount: 1, lastUsedAt: 1 }]),
+    );
+
+    expect(recentLocations()).toEqual([GLAMORGAN]);
+  });
+
   it("orders recent by last used and most used by count", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);

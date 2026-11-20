@@ -146,4 +146,36 @@ describe("RelayJobForm arrival times", () => {
     expect(parts(second.arrivesAt)).toEqual([2026, 3, 10, 13, 40]);
     expect(first.arrivesAt).toBe(new Date(first.arrivesAt).toISOString());
   });
+
+  it("sends the postcode of each rendezvous point", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(async (_payload: RelayJobPayload) => {});
+    const withPostcode = { ...FIRST, postcode: "CF83 1AA" };
+    render(
+      <RelayJobForm
+        jobDate={JOB_DATE}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        placesLookup={{
+          ...stubLookup(),
+          details: async () => withPostcode,
+        }}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Rendezvous point 1"), "Services");
+    await user.click(
+      await screen.findByRole("option", { name: /Services, M4 Junction 32/ }),
+    );
+    await screen.findByDisplayValue("Services, M4 Junction 32, CF83 1AA");
+    fireEvent.change(screen.getByLabelText("Arrival time at rendezvous 1"), {
+      target: { value: "10:15" },
+    });
+    await user.click(screen.getByRole("button", { name: "Convert to relay" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit.mock.calls[0][0].rendezvousPoints[0]).toMatchObject(
+      withPostcode,
+    );
+  });
 });

@@ -627,4 +627,67 @@ describe("NewJobDrawer", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("sends the postcode of each chosen place and remembers it", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn(
+      async (payload: CreateJobPayload): Promise<DeliveryJob> => ({
+        ...CREATED_JOB,
+        collection: { ...payload.collection, notes: null },
+        delivery: { ...payload.delivery, notes: null },
+      }),
+    );
+    const collection = { ...COLLECTION, postcode: "CF72 8XR" };
+    const delivery = { ...DELIVERY, postcode: "CF14 4XW" };
+    const lookup: PlacesLookup = {
+      ...stubLookup(),
+      details: async (placeId: string) =>
+        placeId === COLLECTION.placeId ? collection : delivery,
+    };
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={lookup}
+        createJob={createJob}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Caller name"), "Dr. Smith");
+    await user.type(screen.getByLabelText("Contact number"), "029 2074 7747");
+    await user.type(screen.getByLabelText("Collection location"), "Royal");
+    await user.click(
+      await screen.findByRole("option", { name: /Royal Glamorgan/ }),
+    );
+    await user.type(screen.getByLabelText("Delivery location"), "University");
+    await user.click(
+      await screen.findByRole("option", { name: /University Hospital/ }),
+    );
+    await screen.findByDisplayValue(`${DELIVERY.address}, CF14 4XW`);
+    await user.type(
+      screen.getByLabelText("Item or contents description"),
+      "Blood samples",
+    );
+    await user.click(screen.getByRole("checkbox", { name: "East" }));
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => {
+      expect(createJob).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createJob.mock.calls[0];
+    expect(payload.collection).toEqual(collection);
+    expect(payload.delivery).toEqual(delivery);
+
+    await waitFor(() => {
+      expect(recentLocations()).toHaveLength(2);
+    });
+    expect(
+      recentLocations()
+        .map((place) => place.postcode)
+        .sort(),
+    ).toEqual(["CF14 4XW", "CF72 8XR"]);
+    expect(localStorage.getItem(SAVED_LOCATIONS_KEY)).not.toContain("notes");
+  });
 });

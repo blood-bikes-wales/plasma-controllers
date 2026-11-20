@@ -26,9 +26,16 @@ type AutocompleteService = {
   ) => void;
 };
 
+type AddressComponent = {
+  long_name: string;
+  short_name?: string;
+  types: string[];
+};
+
 type PlaceResult = {
   place_id?: string;
   formatted_address?: string;
+  address_components?: AddressComponent[];
   name?: string;
   geometry?: {
     location?: {
@@ -188,12 +195,22 @@ function locationFromPlace(place: PlaceResult | null): PlaceLocation {
     throw new Error("That place is missing map details. Choose another.");
   }
 
+  const postcode = postcodeFromPlace(place);
+
   return {
     placeId: place.place_id,
     address,
+    ...(postcode ? { postcode } : {}),
     latitude: readCoordinate(geometry.lat),
     longitude: readCoordinate(geometry.lng),
   };
+}
+
+function postcodeFromPlace(place: PlaceResult): string | undefined {
+  const component = place.address_components?.find((item) =>
+    item.types.includes("postal_code"),
+  );
+  return component?.long_name.trim() || undefined;
 }
 
 function placesAttributionNode(): HTMLElement {
@@ -241,7 +258,13 @@ export async function placeDetails(placeId: string): Promise<PlaceLocation> {
     service.getDetails(
       {
         placeId,
-        fields: ["place_id", "formatted_address", "name", "geometry"],
+        fields: [
+          "place_id",
+          "formatted_address",
+          "address_components",
+          "name",
+          "geometry",
+        ],
       },
       (place, status) => {
         if (status !== "OK") {
@@ -259,7 +282,34 @@ export async function placeDetails(placeId: string): Promise<PlaceLocation> {
   });
 }
 
+const detailsCache = new Map<string, Promise<PlaceLocation>>();
+
+/**
+ * `placeDetails` remembered per place id for the life of the page, so a
+ * suggestion whose postcode was fetched for the list is not fetched again when
+ * it is chosen. A failed lookup is forgotten so it can be retried.
+ */
+export function cachedPlaceDetails(placeId: string): Promise<PlaceLocation> {
+  const cached = detailsCache.get(placeId);
+  if (cached) {
+    return cached;
+  }
+
+  const pending = placeDetails(placeId);
+  detailsCache.set(placeId, pending);
+  pending.catch(() => {
+    if (detailsCache.get(placeId) === pending) {
+      detailsCache.delete(placeId);
+    }
+  });
+  return pending;
+}
+
+export function clearPlaceDetailsCache(): void {
+  detailsCache.clear();
+}
+
 export const googlePlacesLookup: PlacesLookup = {
   suggest: suggestPlaces,
-  details: placeDetails,
+  details: cachedPlaceDetails,
 };

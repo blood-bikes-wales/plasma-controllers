@@ -34,6 +34,7 @@ import {
   performJobAction,
   relayJob,
 } from "~/lib/jobs";
+import { addressWithPostcode } from "~/lib/postcode";
 import { type ActiveShift, fetchActiveShifts } from "~/lib/shifts";
 import { cn } from "~/lib/utils";
 import { fieldErrors } from "~/lib/validation";
@@ -84,7 +85,10 @@ function JobRouteSummary({ job }: { job: DeliveryJob }) {
       <div className="min-w-0 space-y-3">
         <div>
           <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
-            {job.collection.address}
+            {addressWithPostcode(
+              job.collection.address,
+              job.collection.postcode,
+            )}
           </p>
           <EstimatedTime
             label="Estimated collection"
@@ -98,7 +102,7 @@ function JobRouteSummary({ job }: { job: DeliveryJob }) {
         </div>
         <div>
           <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
-            {job.delivery.address}
+            {addressWithPostcode(job.delivery.address, job.delivery.postcode)}
           </p>
           <EstimatedTime
             label="Estimated delivery"
