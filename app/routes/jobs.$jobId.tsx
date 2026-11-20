@@ -21,6 +21,7 @@ import {
   allowedActionsForJob,
   cancelJob,
   combineDayAndTime,
+  type DeliverJobPayload,
   type DeliveryJob,
   defaultDateTimeLocalValue,
   defaultTimeValue,
@@ -31,6 +32,7 @@ import {
   fromDateTimeLocalValue,
   getJobDate,
   isRelayJob,
+  type JobDeliveryRecord,
   type JobMother,
   jobErrorMessage,
   performJobAction,
@@ -55,10 +57,22 @@ const collectSchema = z.object({
   collectedAt: z.string().trim().min(1, "Enter a collection time"),
 });
 
-const deliverSchema = z.object({
-  recipient: z.string().trim().min(1, "Enter the recipient"),
-  deliveredAt: z.string().trim().min(1, "Enter a delivery time"),
-});
+const deliverSchema = z
+  .object({
+    recipient: z.string().trim(),
+    noRecipient: z.boolean(),
+    deliveredAt: z.string().trim().min(1, "Enter a delivery time"),
+  })
+  .superRefine((value, ctx) => {
+    // The recipient is only required when someone did receive the delivery.
+    if (!value.noRecipient && value.recipient.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["recipient"],
+        message: "Enter the recipient",
+      });
+    }
+  });
 
 function statusBadgeClass(status: string) {
   switch (status) {
@@ -368,6 +382,15 @@ function CollectJobForm({
   );
 }
 
+/** `recipient` is null when nobody received the delivery. */
+function deliveryRecordText(record: JobDeliveryRecord) {
+  if (record.noRecipient) {
+    return "Delivered, no recipient";
+  }
+
+  return record.recipient ? `Delivered to ${record.recipient}` : "Delivered";
+}
+
 function DeliverJobForm({
   jobDate,
   isSubmitting,
@@ -375,12 +398,10 @@ function DeliverJobForm({
 }: {
   jobDate: string | null;
   isSubmitting: boolean;
-  onSubmit: (payload: {
-    recipient: string;
-    deliveredAt: string;
-  }) => Promise<void>;
+  onSubmit: (payload: DeliverJobPayload) => Promise<void>;
 }) {
   const [recipient, setRecipient] = useState("");
+  const [noRecipient, setNoRecipient] = useState(false);
   const [deliveredAt, setDeliveredAt] = useState(() =>
     defaultRecordedAt(jobDate),
   );
@@ -390,7 +411,11 @@ function DeliverJobForm({
     event.preventDefault();
     setErrors({});
 
-    const parsed = deliverSchema.safeParse({ recipient, deliveredAt });
+    const parsed = deliverSchema.safeParse({
+      recipient,
+      noRecipient,
+      deliveredAt,
+    });
     const nextErrors = fieldErrors(parsed);
     if (!parsed.success) {
       setErrors(nextErrors);
@@ -403,10 +428,23 @@ function DeliverJobForm({
       return;
     }
 
-    await onSubmit({
-      recipient: parsed.data.recipient,
-      deliveredAt: deliveredIso,
-    });
+    await onSubmit(
+      parsed.data.noRecipient
+        ? { noRecipient: true, deliveredAt: deliveredIso }
+        : {
+            recipient: parsed.data.recipient,
+            noRecipient: false,
+            deliveredAt: deliveredIso,
+          },
+    );
+  }
+
+  function handleNoRecipientChange(checked: boolean) {
+    setNoRecipient(checked);
+    if (checked) {
+      setRecipient("");
+      setErrors(({ recipient: _cleared, ...rest }) => rest);
+    }
   }
 
   return (
@@ -416,9 +454,23 @@ function DeliverJobForm({
         <Input
           id="recipient"
           value={recipient}
+          disabled={noRecipient}
           onChange={(event) => setRecipient(event.target.value)}
         />
         <FieldError message={errors.recipient} />
+        <label
+          htmlFor="no-recipient"
+          className="flex min-h-11 items-center gap-3 rounded-xl px-1 text-base font-medium text-bb-gray-900 dark:text-bb-gray-100"
+        >
+          <input
+            id="no-recipient"
+            type="checkbox"
+            className="size-5 shrink-0 rounded border-bb-gray-300 accent-bb-cta"
+            checked={noRecipient}
+            onChange={(event) => handleNoRecipientChange(event.target.checked)}
+          />
+          No person or recipient
+        </label>
       </div>
 
       <RecordedAtField
@@ -638,7 +690,7 @@ export default function JobDetailPage() {
           ) : null}
           {job.deliveryRecord ? (
             <p className="text-sm text-bb-gray-600 dark:text-bb-gray-300">
-              Delivered to {job.deliveryRecord.recipient}
+              {deliveryRecordText(job.deliveryRecord)}
             </p>
           ) : null}
           {job.cancellation?.reason ? (

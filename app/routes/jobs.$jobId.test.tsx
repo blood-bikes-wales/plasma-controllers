@@ -479,6 +479,116 @@ describe("Record collection and delivery time only", () => {
     expect([sent.getHours(), sent.getMinutes()]).toEqual([16, 45]);
   });
 
+  it("shows the Recipient error when it is empty and the box is not ticked", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({
+      jobId: collected.id,
+      active: [collected],
+    });
+
+    expect(await screen.findByLabelText("Recipient")).toBeEnabled();
+    expect(
+      screen.getByRole("checkbox", { name: "No person or recipient" }),
+    ).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Record delivery" }));
+
+    expect(await screen.findByText("Enter the recipient")).toBeVisible();
+    expect(
+      fetchStub.mock.calls.some(([input]) =>
+        String(input instanceof Request ? input.url : input).includes(
+          "/actions/deliver",
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("disables and clears Recipient when 'No person or recipient' is ticked, and re-enables it when unticked", async () => {
+    const user = userEvent.setup();
+    renderJobDetail({ jobId: collected.id, active: [collected] });
+
+    const recipient = await screen.findByLabelText("Recipient");
+    const checkbox = screen.getByRole("checkbox", {
+      name: "No person or recipient",
+    });
+
+    await user.type(recipient, "Sister Jones");
+    await user.click(checkbox);
+    expect(recipient).toBeDisabled();
+    expect(recipient).toHaveValue("");
+
+    await user.click(checkbox);
+    expect(recipient).toBeEnabled();
+    expect(recipient).toHaveValue("");
+  });
+
+  it("clears a showing Recipient error when the box is ticked", async () => {
+    const user = userEvent.setup();
+    renderJobDetail({ jobId: collected.id, active: [collected] });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Record delivery" }),
+    );
+    expect(await screen.findByText("Enter the recipient")).toBeVisible();
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "No person or recipient" }),
+    );
+    expect(screen.queryByText("Enter the recipient")).not.toBeInTheDocument();
+  });
+
+  it("records a delivery with no recipient and says so on the job", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({
+      jobId: collected.id,
+      active: [collected],
+    });
+
+    await user.click(
+      await screen.findByRole("checkbox", { name: "No person or recipient" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Record delivery" }));
+
+    expect(await screen.findByText("Delivered, no recipient")).toBeVisible();
+    expect(screen.queryByText(/Delivered to/)).not.toBeInTheDocument();
+    const body = requestBody(fetchStub, "deliver");
+    expect(body.noRecipient).toBe(true);
+    expect(body).not.toHaveProperty("recipient");
+  });
+
+  it("sends noRecipient false with the recipient when the box is not ticked", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({
+      jobId: collected.id,
+      active: [collected],
+    });
+
+    await user.type(await screen.findByLabelText("Recipient"), "Sister Jones");
+    await user.click(screen.getByRole("button", { name: "Record delivery" }));
+
+    expect(await screen.findByText("Delivered to Sister Jones")).toBeVisible();
+    const body = requestBody(fetchStub, "deliver");
+    expect(body.noRecipient).toBe(false);
+    expect(body.recipient).toBe("Sister Jones");
+  });
+
+  it("shows 'Delivered, no recipient' for an already delivered job with a null recipient", async () => {
+    const delivered: DeliveryJob = {
+      ...base,
+      id: "66666666-6666-6666-6666-666666666666",
+      status: "Delivered",
+      createdAt,
+      allowedActions: [],
+      deliveryRecord: {
+        recipient: null,
+        noRecipient: true,
+        deliveredAt: "2026-03-10T16:45:00",
+      },
+    };
+    renderJobDetail({ jobId: delivered.id, active: [delivered] });
+
+    expect(await screen.findByText("Delivered, no recipient")).toBeVisible();
+  });
+
   it("keeps the date-and-time picker for a leg of a relay", async () => {
     renderJobDetail({
       jobId: relayLeg.id,
