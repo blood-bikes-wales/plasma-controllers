@@ -16,6 +16,7 @@ import {
   getJobDate,
   isMilkJob,
   isRelayJob,
+  isStaleJobError,
   jobAttentionLabel,
   jobErrorMessage,
   needsMotherContact,
@@ -700,5 +701,32 @@ describe("waitingForLegMessage", () => {
   it("is null when nothing is holding the leg back or the API does not say", () => {
     expect(waitingForLegMessage({ waitingForLeg: null })).toBeNull();
     expect(waitingForLegMessage({})).toBeNull();
+  });
+});
+
+describe("isStaleJobError", () => {
+  const apiError = (status: number, errors?: Record<string, string[]>) =>
+    new ApiError(status, "Nope", { body: errors ? { errors } : {} });
+
+  it("treats a missing job, a conflict and a job-state 422 as stale", () => {
+    expect(isStaleJobError(apiError(404))).toBe(true);
+    expect(isStaleJobError(apiError(409))).toBe(true);
+    expect(
+      isStaleJobError(apiError(422, { action: ["Job is Collected."] })),
+    ).toBe(true);
+    expect(isStaleJobError(apiError(422, { job: ["Manage the legs."] }))).toBe(
+      true,
+    );
+  });
+
+  it("does not for a validation error on the shift, other statuses or non-API errors", () => {
+    expect(isStaleJobError(apiError(422, { shiftId: ["Invalid."] }))).toBe(
+      false,
+    );
+    expect(isStaleJobError(apiError(422))).toBe(false);
+    expect(isStaleJobError(apiError(500))).toBe(false);
+    expect(isStaleJobError(apiError(403))).toBe(false);
+    expect(isStaleJobError(new Error("Network down"))).toBe(false);
+    expect(isStaleJobError("nope")).toBe(false);
   });
 });

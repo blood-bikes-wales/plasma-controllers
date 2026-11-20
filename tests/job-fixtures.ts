@@ -6,6 +6,7 @@ import type {
   JobLifecycleAction,
   PlaceLocation,
 } from "~/lib/jobs";
+import type { ActiveShift } from "~/lib/shifts";
 
 const GLAMORGAN = {
   placeId: "ChIJ-glamorgan",
@@ -80,7 +81,7 @@ export const mockActiveJobs: DeliveryJob[] = [
     collection: PRINCE_CHARLES,
     delivery: GWENT,
     createdAt: "2026-08-29T09:50:00.000Z",
-    allowedActions: ["collect", "cancel"],
+    allowedActions: ["allocate", "collect", "cancel"],
     allocatedRider: {
       id: "100001",
       name: "Alex Morgan",
@@ -111,6 +112,28 @@ export const mockCompletedJobs: DeliveryJob[] = [
   }),
 ];
 
+/** Riders on an active shift, as GET /shifts/active lists them. */
+export const mockActiveShifts: ActiveShift[] = [
+  {
+    id: "shift-1",
+    riderId: "100001",
+    riderName: "Alex Morgan",
+    bikeId: "bike-1",
+    bikeRegistration: "CF12 ABC",
+    startMileage: 12000,
+    startedAt: "2026-08-29T08:00:00.000Z",
+  },
+  {
+    id: "shift-2",
+    riderId: "100002",
+    riderName: "Sam Taylor",
+    bikeId: "bike-2",
+    bikeRegistration: "CF34 DEF",
+    startMileage: 8000,
+    startedAt: "2026-08-29T08:30:00.000Z",
+  },
+];
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -122,15 +145,19 @@ function applyLifecycleAction(
   current: DeliveryJob,
   action: JobLifecycleAction,
   payload: Record<string, unknown>,
+  shifts: ActiveShift[] = mockActiveShifts,
 ): DeliveryJob {
   if (action === "allocate") {
+    // Like the API: Allocate also works on an Allocated job (it changes the rider).
+    const shift =
+      shifts.find((candidate) => candidate.id === payload.shiftId) ?? shifts[0];
     return {
       ...current,
       status: "Allocated",
-      allowedActions: ["collect", "cancel"],
+      allowedActions: ["allocate", "collect", "cancel"],
       allocatedRider: {
-        id: "100001",
-        name: "Alex Morgan",
+        id: shift?.riderId ?? "100001",
+        name: shift?.riderName ?? "Alex Morgan",
         shiftId: String(payload.shiftId ?? "shift-1"),
         allocatedAt: new Date().toISOString(),
       },
@@ -222,6 +249,9 @@ export function stubJobsFetch(
     completed = mockCompletedJobs,
     olderCompleted = [],
     failSettingsSave = false,
+    activeShifts = mockActiveShifts,
+    allocateError,
+    allocateFailure,
   }: {
     active?: DeliveryJob[];
     completed?: DeliveryJob[];
@@ -233,6 +263,16 @@ export function stubJobsFetch(
     olderCompleted?: DeliveryJob[];
     /** Make PATCH /me fail with a 500. */
     failSettingsSave?: boolean;
+    /** What GET /shifts/active lists. Empty means nobody is on shift. */
+    activeShifts?: ActiveShift[];
+    /** Make POST .../actions/allocate fail with this 422 message. */
+    allocateError?: string;
+    /** Make POST .../actions/allocate fail with this exact response (status, message and field errors). */
+    allocateFailure?: {
+      status: number;
+      message: string;
+      errors?: Record<string, string[]>;
+    };
   } = {},
 ) {
   const activeState = [...active];
@@ -282,19 +322,7 @@ export function stubJobsFetch(
     }
 
     if (url.includes("/shifts/active")) {
-      return jsonResponse({
-        data: [
-          {
-            id: "shift-1",
-            riderId: "100001",
-            riderName: "Alex Morgan",
-            bikeId: "bike-1",
-            bikeRegistration: "CF12 ABC",
-            startMileage: 12000,
-            startedAt: "2026-08-29T08:00:00.000Z",
-          },
-        ],
-      });
+      return jsonResponse({ data: activeShifts });
     }
 
     const scheduleMatch = url.match(/\/jobs\/([^/]+)\/schedule$/);
@@ -421,7 +449,31 @@ export function stubJobsFetch(
       }
 
       const lifecycleAction = action as JobLifecycleAction;
-      const updated = applyLifecycleAction(current, lifecycleAction, body);
+      if (lifecycleAction === "allocate" && allocateFailure) {
+        return jsonResponse(
+          {
+            message: allocateFailure.message,
+            ...(allocateFailure.errors
+              ? { errors: allocateFailure.errors }
+              : {}),
+          },
+          allocateFailure.status,
+        );
+      }
+
+      if (lifecycleAction === "allocate" && allocateError) {
+        return jsonResponse(
+          { message: allocateError, errors: { shiftId: [allocateError] } },
+          422,
+        );
+      }
+
+      const updated = applyLifecycleAction(
+        current,
+        lifecycleAction,
+        body,
+        activeShifts,
+      );
       const activeIndex = activeState.findIndex(
         (candidate) => candidate.id === jobId,
       );

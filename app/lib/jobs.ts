@@ -365,6 +365,38 @@ export function formatEstimatedTime(iso: string | null | undefined): string {
   return formatJobCreatedAt(iso ?? null);
 }
 
+/**
+ * Whether a failed action says the page's copy of the job is out of date (it is
+ * gone, or someone else already moved it on): a 404, a 409, or a 422 about the
+ * job or its state (`errors.action` / `errors.job`) rather than about the field
+ * sent (`errors.shiftId`). Network errors, 5xx and field validation errors are
+ * not stale-job signals.
+ */
+export function isStaleJobError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+
+  if (error.status === 404 || error.status === 409) {
+    return true;
+  }
+
+  if (error.status !== 422) {
+    return false;
+  }
+
+  const errors =
+    typeof error.body === "object" &&
+    error.body !== null &&
+    "errors" in error.body &&
+    typeof error.body.errors === "object" &&
+    error.body.errors !== null
+      ? error.body.errors
+      : {};
+
+  return "action" in errors || "job" in errors;
+}
+
 export function jobErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError && error.message.length > 0) {
     return error.message;

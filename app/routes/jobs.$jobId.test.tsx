@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -18,8 +19,13 @@ import { AuthProvider } from "~/lib/auth";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 import type { DeliveryJob } from "~/lib/jobs";
 import { Role } from "~/lib/roles";
+import type { ActiveShift } from "~/lib/shifts";
 import { mockAuthUser } from "../../tests/auth-fixtures";
-import { mockActiveJobs, stubJobsFetch } from "../../tests/job-fixtures";
+import {
+  mockActiveJobs,
+  mockActiveShifts,
+  stubJobsFetch,
+} from "../../tests/job-fixtures";
 import { appRoutes } from "../../tests/routes-config";
 
 function withAuthProvider(routes: RouteObject[]): RouteObject[] {
@@ -40,11 +46,21 @@ function renderJobDetail({
   roles = [Role.Controller],
   active,
   olderCompleted,
+  activeShifts,
+  allocateError,
+  allocateFailure,
 }: {
   jobId?: string;
   roles?: Role[];
   active?: DeliveryJob[];
   olderCompleted?: DeliveryJob[];
+  activeShifts?: ActiveShift[];
+  allocateError?: string;
+  allocateFailure?: {
+    status: number;
+    message: string;
+    errors?: Record<string, string[]>;
+  };
 } = {}) {
   const user = { ...mockAuthUser, roles };
   setAuthToken("test-google-id-token");
@@ -53,6 +69,9 @@ function renderJobDetail({
     stubJobsFetch(user, {
       ...(active ? { active } : {}),
       ...(olderCompleted ? { olderCompleted } : {}),
+      ...(activeShifts ? { activeShifts } : {}),
+      ...(allocateError ? { allocateError } : {}),
+      ...(allocateFailure ? { allocateFailure } : {}),
     }),
   );
   vi.stubGlobal("fetch", fetchStub);
@@ -63,7 +82,7 @@ function renderJobDetail({
 
   render(<RouterProvider router={router} />);
 
-  return { fetchStub };
+  return { fetchStub, router };
 }
 
 afterEach(() => {
@@ -311,7 +330,7 @@ describe("Job detail lifecycle", () => {
     ).toBeInTheDocument();
   });
 
-  it("allocates a rider and advances the job status", async () => {
+  it("allocates a rider as soon as one is chosen and advances the job status", async () => {
     const user = userEvent.setup();
     renderJobDetail();
 
@@ -324,8 +343,7 @@ describe("Job detail lifecycle", () => {
       await screen.findByRole("option", { name: /Alex Morgan/ }),
     );
 
-    await user.click(screen.getByRole("button", { name: "Allocate rider" }));
-
+    // No button was pressed: choosing the rider is the commit.
     await waitFor(() => {
       expect(screen.getByText("Allocated")).toBeInTheDocument();
     });
@@ -336,6 +354,561 @@ describe("Job detail lifecycle", () => {
     expect(
       screen.queryByRole("heading", { name: "Allocate rider" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+function allocateCalls(fetchStub: ReturnType<typeof vi.fn>) {
+  return fetchStub.mock.calls.filter(([input]) =>
+    String(input instanceof Request ? input.url : input).includes(
+      "/actions/allocate",
+    ),
+  );
+}
+
+function allocateBodies(fetchStub: ReturnType<typeof vi.fn>) {
+  return allocateCalls(fetchStub).map(([, init]) =>
+    JSON.parse(String((init as RequestInit | undefined)?.body)),
+  );
+}
+
+describe("Allocate rider on selection", () => {
+  const newJobId = mockActiveJobs[0].id;
+  const allocatedJobId = mockActiveJobs[1].id;
+
+  it("has no Allocate rider button", async () => {
+    renderJobDetail();
+
+    expect(
+      await screen.findByRole("heading", { name: "Allocate rider" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /allocate rider/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Active shift rider")).toBeInTheDocument();
+  });
+
+  it("posts once with the chosen shiftId", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail();
+
+    await user.click(await screen.findByLabelText("Active shift rider"));
+    await user.click(await screen.findByRole("option", { name: /Sam Taylor/ }));
+
+    const riderLine = (await screen.findByText(/Allocated rider:/)).closest(
+      "p",
+    );
+    expect(riderLine).toHaveTextContent("Allocated rider: Sam Taylor");
+    expect(allocateBodies(fetchStub)).toEqual([{ shiftId: "shift-2" }]);
+  });
+
+  it("disables the field and says Allocating… while the request runs", async () => {
+    const user = userEvent.setup();
+    renderJobDetail();
+    const field = await screen.findByLabelText("Active shift rider");
+
+    // Hold the allocate request open.
+    const realFetch = globalThis.fetch;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).includes("/actions/allocate")) {
+          await gate;
+        }
+        return realFetch(input, init);
+      }),
+    );
+
+    await user.click(field);
+    await user.click(
+      await screen.findByRole("option", { name: /Alex Morgan/ }),
+    );
+
+    expect(await screen.findByText("Allocating…")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Allocating…");
+    expect(screen.getByRole("button", { name: "Change" })).toBeDisabled();
+
+    release();
+
+    expect(await screen.findByText(/Allocated rider:/)).toBeInTheDocument();
+    expect(screen.queryByText("Allocating…")).not.toBeInTheDocument();
+  });
+
+  it("shows a failure under the field, clears the selection and leaves the field usable", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({
+      allocateError: "Allocate only accepts a rider on an active Plasma shift.",
+    });
+
+    await user.click(await screen.findByLabelText("Active shift rider"));
+    await user.click(
+      await screen.findByRole("option", { name: /Alex Morgan/ }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Allocate only accepts a rider on an active Plasma shift.",
+    );
+    const field = screen.getByLabelText("Active shift rider");
+    expect(field).toHaveValue("");
+    expect(field).toBeEnabled();
+    expect(field).toHaveFocus();
+    // Still a New job with the form on show.
+    expect(screen.getByText("New")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Allocate rider" }),
+    ).toBeInTheDocument();
+
+    // And the controller can pick again.
+    await user.click(await screen.findByRole("option", { name: /Sam Taylor/ }));
+    await waitFor(() => expect(allocateCalls(fetchStub)).toHaveLength(2));
+    expect(allocateBodies(fetchStub)).toEqual([
+      { shiftId: "shift-1" },
+      { shiftId: "shift-2" },
+    ]);
+  });
+
+  it("shows the empty message when no rider is on shift", async () => {
+    renderJobDetail({ activeShifts: [] });
+
+    expect(
+      await screen.findByText("No riders are currently on an active shift."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Active shift rider")).toBeDisabled();
+  });
+
+  it("posts once when the choice is reported twice", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail();
+
+    await user.click(await screen.findByLabelText("Active shift rider"));
+    const option = await screen.findByRole("option", { name: /Sam Taylor/ });
+    act(() => {
+      fireEvent.click(option);
+      fireEvent.click(option);
+    });
+
+    expect(await screen.findByText(/Allocated rider:/)).toBeInTheDocument();
+    expect(allocateCalls(fetchStub)).toHaveLength(1);
+  });
+
+  it("offers the form on an Allocated job, labelled as a change, with the current rider as its value", async () => {
+    renderJobDetail({ jobId: allocatedJobId });
+
+    expect(
+      await screen.findByRole("heading", { name: "Change rider" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Allocate rider" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("New rider on shift")).toHaveValue(
+      "Alex Morgan · CF12 ABC",
+    );
+    expect(screen.getByText(/Currently allocated to/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Record collection" }),
+    ).toBeInTheDocument();
+  });
+
+  it("re-allocates an Allocated job, posts once and shows the new rider", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({ jobId: allocatedJobId });
+
+    await user.click(await screen.findByRole("button", { name: "Change" }));
+    await user.click(await screen.findByRole("option", { name: /Sam Taylor/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Allocated rider:/).closest("p"),
+      ).toHaveTextContent("Allocated rider: Sam Taylor");
+    });
+    expect(screen.getByText(/Currently allocated to/)).toHaveTextContent(
+      "Currently allocated to Sam Taylor",
+    );
+    expect(screen.getByLabelText("New rider on shift")).toHaveValue(
+      "Sam Taylor · CF34 DEF",
+    );
+    expect(screen.getByText("Allocated")).toBeInTheDocument();
+    expect(allocateBodies(fetchStub)).toEqual([{ shiftId: "shift-2" }]);
+  });
+
+  it("posts nothing when the already-allocated rider is chosen again", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({ jobId: allocatedJobId });
+
+    await user.click(await screen.findByRole("button", { name: "Change" }));
+    await user.click(
+      await screen.findByRole("option", { name: /Alex Morgan/ }),
+    );
+
+    expect(screen.getByLabelText("New rider on shift")).toHaveValue(
+      "Alex Morgan · CF12 ABC",
+    );
+    expect(allocateCalls(fetchStub)).toHaveLength(0);
+  });
+
+  it("does not offer the form to roles that cannot manage jobs", async () => {
+    renderJobDetail({ jobId: allocatedJobId, roles: [Role.Rider] });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1038" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Change rider" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("New rider on shift"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not offer the form once the job is Collected", async () => {
+    const [, allocated] = mockActiveJobs;
+    const collected: DeliveryJob = {
+      ...allocated,
+      status: "Collected",
+      allowedActions: ["deliver", "cancel"],
+    };
+    renderJobDetail({ jobId: collected.id, active: [collected] });
+
+    expect(
+      await screen.findByRole("heading", { name: "Record delivery" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /change rider|allocate rider/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not offer the form on an Allocated job when the API does not allow allocate", async () => {
+    const [, allocated] = mockActiveJobs;
+    const older: DeliveryJob = {
+      ...allocated,
+      allowedActions: ["collect", "cancel"],
+    };
+    renderJobDetail({ jobId: older.id, active: [older] });
+
+    expect(
+      await screen.findByRole("heading", { name: "Record collection" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Change rider" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("puts the field back on the current rider when re-allocating fails", async () => {
+    const user = userEvent.setup();
+    renderJobDetail({
+      jobId: allocatedJobId,
+      allocateError: "Allocate only accepts a rider on an active Plasma shift.",
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Change" }));
+    await user.click(await screen.findByRole("option", { name: /Sam Taylor/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Allocate only accepts a rider on an active Plasma shift.",
+    );
+    expect(screen.getByLabelText("New rider on shift")).toHaveValue(
+      "Alex Morgan · CF12 ABC",
+    );
+    expect(screen.getByLabelText("New rider on shift")).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Change" })).toBeEnabled();
+  });
+
+  /** Replace GET /shifts/active after load: each call takes the next entry (the last repeats); "error" fails it. */
+  function stubShiftsAfterLoad(responses: (ActiveShift[] | "error")[]) {
+    const realFetch = globalThis.fetch;
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (!String(input).includes("/shifts/active")) {
+          return realFetch(input, init);
+        }
+
+        const next =
+          responses[Math.min(calls.length, responses.length - 1)] ?? [];
+        calls.push("shifts");
+        if (next === "error") {
+          return new Response(JSON.stringify({ message: "Boom" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        return new Response(JSON.stringify({ data: next }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    return calls;
+  }
+
+  it("re-reads the active shifts after a failed allocation so a rider who logged off is not offered again", async () => {
+    const user = userEvent.setup();
+    renderJobDetail({ allocateError: "The selected shift is invalid." });
+    await screen.findByLabelText("Active shift rider");
+    const calls = stubShiftsAfterLoad([[mockActiveShifts[1]]]);
+
+    await user.click(screen.getByLabelText("Active shift rider"));
+    await user.click(
+      await screen.findByRole("option", { name: /Alex Morgan/ }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The selected shift is invalid.",
+    );
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await user.click(screen.getByLabelText("Active shift rider"));
+    expect(
+      await screen.findByRole("option", { name: /Sam Taylor/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /Alex Morgan/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("re-reads the active shifts after a successful allocation too", async () => {
+    const user = userEvent.setup();
+    renderJobDetail();
+    await screen.findByLabelText("Active shift rider");
+    const calls = stubShiftsAfterLoad([mockActiveShifts]);
+
+    await user.click(screen.getByLabelText("Active shift rider"));
+    await user.click(await screen.findByRole("option", { name: /Sam Taylor/ }));
+
+    await screen.findByText(/Allocated rider:/);
+    await waitFor(() => expect(calls).toHaveLength(1));
+  });
+
+  it("keeps the old list and the error when the refresh fails", async () => {
+    const user = userEvent.setup();
+    renderJobDetail({ allocateError: "The selected shift is invalid." });
+    await screen.findByLabelText("Active shift rider");
+    const calls = stubShiftsAfterLoad(["error"]);
+
+    await user.click(screen.getByLabelText("Active shift rider"));
+    await user.click(
+      await screen.findByRole("option", { name: /Alex Morgan/ }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The selected shift is invalid.",
+    );
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await user.click(screen.getByLabelText("Active shift rider"));
+    expect(
+      await screen.findByRole("option", { name: /Alex Morgan/ }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
+  it("ignores an allocation result that arrives after the page moved to another job", async () => {
+    const user = userEvent.setup();
+    const { router } = renderJobDetail();
+    const field = await screen.findByLabelText("Active shift rider");
+
+    // Hold the allocate request for JB-1042 open.
+    const realFetch = globalThis.fetch;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const response = await realFetch(input, init);
+        if (String(input).includes("/actions/allocate")) {
+          await gate;
+        }
+        return response;
+      }),
+    );
+
+    await user.click(field);
+    await user.click(await screen.findByRole("option", { name: /Sam Taylor/ }));
+    expect(await screen.findByText("Allocating…")).toBeInTheDocument();
+
+    await act(async () => {
+      await router.navigate(`/jobs/${allocatedJobId}`);
+    });
+    expect(
+      await screen.findByRole("heading", { name: "JB-1038" }),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      release();
+      await gate;
+    });
+    // Let the stale result land.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(
+      screen.getByRole("heading", { name: "JB-1038" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "JB-1042" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Allocated rider:/).closest("p")).toHaveTextContent(
+      "Allocated rider: Alex Morgan",
+    );
+  });
+
+  /** GET /jobs/{id} calls the page makes, with the response swapped for `served` once the page has loaded. */
+  function serveJobAfterLoad(jobId: string, served: DeliveryJob) {
+    const realFetch = globalThis.fetch;
+    const reads: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method?.toUpperCase() ?? "GET";
+        if (method === "GET" && url.endsWith(`/jobs/${jobId}`)) {
+          reads.push(url);
+          return new Response(JSON.stringify(served), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return realFetch(input, init);
+      }),
+    );
+    return reads;
+  }
+
+  it("reloads the job once after a failure about the job's state, so a stale page corrects itself", async () => {
+    const user = userEvent.setup();
+    const [, allocated] = mockActiveJobs;
+    const message = "Job is Collected. Allowed actions: deliver, cancel.";
+    const { fetchStub } = renderJobDetail({
+      jobId: allocatedJobId,
+      allocateFailure: { status: 422, message, errors: { action: [message] } },
+    });
+    await screen.findByRole("heading", { name: "Change rider" });
+    const reads = serveJobAfterLoad(allocatedJobId, {
+      ...allocated,
+      status: "Collected",
+      allowedActions: ["deliver", "cancel"],
+    });
+
+    await user.click(screen.getByRole("button", { name: "Change" }));
+    await user.click(await screen.findByRole("option", { name: /Sam Taylor/ }));
+
+    // The page now shows the job as it really is, and says why the change failed.
+    expect(
+      await screen.findByRole("heading", { name: "Record delivery" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Change rider" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByText("Collected")).toBeInTheDocument();
+
+    // One re-read, one allocate attempt: no loop.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(reads).toHaveLength(1);
+    expect(allocateCalls(fetchStub)).toHaveLength(1);
+  });
+
+  it("keeps the form and its error when the reload shows the job can still be allocated", async () => {
+    const user = userEvent.setup();
+    const [, allocated] = mockActiveJobs;
+    const message = "Something about the job.";
+    renderJobDetail({
+      jobId: allocatedJobId,
+      allocateFailure: { status: 409, message },
+    });
+    await screen.findByRole("heading", { name: "Change rider" });
+    const reads = serveJobAfterLoad(allocatedJobId, allocated);
+
+    await user.click(screen.getByRole("button", { name: "Change" }));
+    await user.click(await screen.findByRole("option", { name: /Sam Taylor/ }));
+
+    await waitFor(() => expect(reads).toHaveLength(1));
+    // The field's own error is the only alert.
+    expect(await screen.findAllByRole("alert")).toHaveLength(1);
+    expect(
+      screen.getByRole("heading", { name: "Change rider" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not reload the job after a validation error on the shift", async () => {
+    const user = userEvent.setup();
+    const [newJob] = mockActiveJobs;
+    renderJobDetail({
+      allocateFailure: {
+        status: 422,
+        message: "The selected shift is invalid.",
+        errors: { shiftId: ["The selected shift is invalid."] },
+      },
+    });
+    await screen.findByLabelText("Active shift rider");
+    const reads = serveJobAfterLoad(newJob.id, newJob);
+
+    await user.click(screen.getByLabelText("Active shift rider"));
+    await user.click(
+      await screen.findByRole("option", { name: /Alex Morgan/ }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The selected shift is invalid.",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(reads).toHaveLength(0);
+  });
+
+  it("does not reload the job after a server error", async () => {
+    const user = userEvent.setup();
+    const [newJob] = mockActiveJobs;
+    renderJobDetail({
+      allocateFailure: { status: 500, message: "Server error." },
+    });
+    await screen.findByLabelText("Active shift rider");
+    const reads = serveJobAfterLoad(newJob.id, newJob);
+
+    await user.click(screen.getByLabelText("Active shift rider"));
+    await user.click(
+      await screen.findByRole("option", { name: /Alex Morgan/ }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Server error.");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(reads).toHaveLength(0);
+  });
+
+  it("shows no allocate form on a relay parent", async () => {
+    const [newJob] = mockActiveJobs;
+    const parent: DeliveryJob = {
+      ...newJob,
+      id: "33333333-3333-3333-3333-333333333333",
+      reference: "JB-2000",
+      isRelay: true,
+      allowedActions: ["cancel"],
+      legs: [],
+    };
+    renderJobDetail({ jobId: parent.id, active: [parent] });
+
+    expect(
+      await screen.findByRole("heading", { name: "Cancel job" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /allocate rider|change rider/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Active shift rider"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers a New job's form unchanged when the API sends no allowed actions", async () => {
+    const [newJob] = mockActiveJobs;
+    const { allowedActions: _omitted, ...withoutActions } = newJob;
+    renderJobDetail({ jobId: newJobId, active: [withoutActions] });
+
+    expect(
+      await screen.findByRole("heading", { name: "Allocate rider" }),
+    ).toBeInTheDocument();
   });
 });
 
