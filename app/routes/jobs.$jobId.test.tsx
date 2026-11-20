@@ -469,3 +469,52 @@ describe("Job detail estimated times", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("Job detail relay arrival times", () => {
+  const [baseJob] = mockActiveJobs;
+
+  function atToday(hours: number, minutes: number) {
+    const date = new Date();
+    date.setHours(hours, minutes, 0, 0);
+    return date.toISOString();
+  }
+
+  function leg(
+    legNumber: number,
+    delivery: string,
+    plannedArrivalAt: string | null,
+  ): DeliveryJob {
+    return {
+      ...baseJob,
+      id: `leg-${legNumber}`,
+      reference: `JB-2100-L${legNumber}`,
+      legNumber,
+      parentJobId: "relay-parent",
+      delivery: { ...baseJob.delivery, address: delivery },
+      plannedArrivalAt,
+      allowedActions: ["allocate", "cancel"],
+    };
+  }
+
+  it("lists each handoff's arrival time in the legs and none for the final hospital", async () => {
+    const parent: DeliveryJob = {
+      ...baseJob,
+      id: "relay-parent",
+      reference: "JB-2100",
+      isRelay: true,
+      allowedActions: ["cancel"],
+      legs: [
+        leg(1, "Handoff One", atToday(10, 15)),
+        leg(2, "Handoff Two", atToday(13, 40)),
+        leg(3, "Final Hospital", null),
+      ],
+    };
+    renderJobDetail({ jobId: parent.id, active: [parent] });
+
+    const first = await screen.findByText("Arrives: Today, 10:15");
+    const second = screen.getByText("Arrives: Today, 13:40");
+    expect(screen.getAllByText(/^Arrives:/)).toHaveLength(2);
+    expect(first.previousElementSibling).toHaveTextContent("Handoff One");
+    expect(second.previousElementSibling).toHaveTextContent("Handoff Two");
+  });
+});

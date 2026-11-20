@@ -86,8 +86,11 @@ export type CancelJobPayload = {
   reason?: string;
 };
 
+/** A handoff stop; `arrivesAt` is an ISO timestamp on the parent job's day. */
+export type RelayRendezvousPoint = PlaceLocation & { arrivesAt: string };
+
 export type RelayJobPayload = {
-  rendezvousPoints: PlaceLocation[];
+  rendezvousPoints: RelayRendezvousPoint[];
 };
 
 export type DeliveryJob = {
@@ -106,6 +109,11 @@ export type DeliveryJob = {
   estimatedCollectionAt?: string | null;
   /** Controller's estimate, not the recorded delivery time. */
   estimatedDeliveryAt?: string | null;
+  /**
+   * Planned arrival at a relay handoff. Set on the leg that delivers to a
+   * rendezvous point, null on the last leg and on non-relay jobs.
+   */
+  plannedArrivalAt?: string | null;
   createdAt: string | null;
   allocatedRider?: JobAllocatedRider | null;
   collectionRecord?: JobCollectionRecord | null;
