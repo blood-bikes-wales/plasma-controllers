@@ -18,6 +18,7 @@ import {
   isRelayJob,
   jobErrorMessage,
   needsMotherContact,
+  orderActiveJobsForBoard,
   scheduleJobCollection,
   upcomingCollectionAt,
   waitingForLegMessage,
@@ -302,6 +303,79 @@ describe("upcomingCollectionAt", () => {
         upcomingCollectionAt({ status, scheduledCollectionAt: at }),
       ).toBeNull();
     }
+  });
+});
+
+describe("orderActiveJobsForBoard", () => {
+  // Built from local calendar parts so it means the same in any timezone.
+  const local = (day: number, hours: number, minutes = 0, seconds = 0) =>
+    new Date(2026, 7, day, hours, minutes, seconds).toISOString();
+  const now = new Date(2026, 7, 29, 12, 0);
+  const job = (
+    reference: string,
+    scheduledCollectionAt: string | null,
+    status = "New",
+  ) => ({ reference, status, scheduledCollectionAt });
+  const order = (jobs: ReturnType<typeof job>[]) =>
+    orderActiveJobsForBoard(jobs, now).map((entry) => entry.reference);
+
+  it("keeps the API order when nothing is scheduled for a later day", () => {
+    expect(
+      order([
+        job("A", null),
+        job("B", local(29, 18)),
+        job("C", local(28, 9)),
+        job("D", null),
+      ]),
+    ).toEqual(["A", "B", "C", "D"]);
+  });
+
+  it("puts jobs for a later day after the rest, soonest first", () => {
+    expect(
+      order([
+        job("late", local(31, 9)),
+        job("none", null),
+        job("soon", local(30, 8)),
+        job("today", local(29, 15)),
+        job("same-day-later", local(30, 17)),
+        job("overdue", local(27, 9)),
+      ]),
+    ).toEqual(["none", "today", "overdue", "soon", "same-day-later", "late"]);
+  });
+
+  it("decides 'today' by the local day, to the second", () => {
+    expect(
+      order([
+        job("tomorrow-midnight", local(30, 0)),
+        job("last-second-today", local(29, 23, 59, 59)),
+        job("first-second-today", local(29, 0)),
+      ]),
+    ).toEqual(["last-second-today", "first-second-today", "tomorrow-midnight"]);
+  });
+
+  it("keeps the API order for jobs scheduled for the same time", () => {
+    expect(
+      order([job("first", local(31, 9)), job("second", local(31, 9))]),
+    ).toEqual(["first", "second"]);
+  });
+
+  it("only groups jobs that are still New or Allocated", () => {
+    expect(
+      order([
+        job("future-new", local(31, 9)),
+        job("collected", local(31, 8), "Collected"),
+        job("future-allocated", local(30, 9), "Allocated"),
+      ]),
+    ).toEqual(["collected", "future-allocated", "future-new"]);
+  });
+
+  it("treats an unreadable time as unscheduled and does not change the input", () => {
+    const jobs = [job("future", local(31, 9)), job("bad", "not a date")];
+    expect(orderActiveJobsForBoard(jobs, now).map((j) => j.reference)).toEqual([
+      "bad",
+      "future",
+    ]);
+    expect(jobs.map((j) => j.reference)).toEqual(["future", "bad"]);
   });
 });
 
