@@ -4,6 +4,7 @@ import {
   addressContainsPostcode,
   addressWithPostcode,
   findUkPostcode,
+  outwardPostcode,
   postcodeToShow,
 } from "~/lib/postcode";
 
@@ -71,5 +72,36 @@ describe("addressWithPostcode", () => {
     expect(addressWithPostcode("Royal Glamorgan Hospital", null)).toBe(
       "Royal Glamorgan Hospital",
     );
+  });
+});
+
+describe("outwardPostcode", () => {
+  it.each([
+    ["SA1 1AA", "SA1"],
+    ["CF144XW", "CF14"],
+    ["w1a 1aa", "W1A"],
+    ["EC1A 1BB", "EC1A"],
+    ["  cf14   4xw ", "CF14"],
+    ["M1 1AE", "M1"],
+    ["SA11AA", "SA1"],
+    ["SA1", "SA1"],
+    ["cf14", "CF14"],
+  ])("derives the outward part of %j", (postcode, expected) => {
+    expect(outwardPostcode(postcode)).toBe(expected);
+  });
+
+  it.each([
+    null,
+    undefined,
+    "",
+    "   ",
+    "Cardiff",
+    "12345",
+    "SA1 1AAA",
+    "1SA 1AA",
+    "SA1 1A1",
+    "SA1, UK",
+  ])("returns null for %j", (postcode) => {
+    expect(outwardPostcode(postcode)).toBeNull();
   });
 });

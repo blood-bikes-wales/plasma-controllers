@@ -45,6 +45,32 @@ export async function fetchPostcodeAreas(options?: {
   return body.data;
 }
 
+export type PostcodeAreaMatch = {
+  areaCode: string;
+  areaFullName: string;
+};
+
+/**
+ * The service area mapped to an outward postcode such as "SA1", or null when
+ * the postcode is not mapped.
+ */
+export async function lookupPostcodeArea(
+  postcode: string,
+): Promise<PostcodeAreaMatch | null> {
+  const params = new URLSearchParams({ postcode });
+  const body = await apiFetch<{ data: PostcodeAreaMatch | null }>(
+    `/postcode-areas/lookup?${params.toString()}`,
+  );
+  if (!body.data) {
+    return null;
+  }
+
+  return {
+    areaCode: body.data.areaCode,
+    areaFullName: body.data.areaFullName,
+  };
+}
+
 export async function createPostcodeArea(
   payload: CreatePostcodeAreaPayload,
 ): Promise<PostcodeAreaMapping> {
