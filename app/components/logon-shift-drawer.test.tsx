@@ -352,6 +352,94 @@ describe("LogonShiftDrawer", () => {
     });
   });
 
+  describe("last shift note", () => {
+    const NOTED_BIKES = [
+      {
+        id: "bk1",
+        registration: "CF12 ABC",
+        area: "E",
+        lastRecordedMileage: 15234,
+        lastShiftNote: "Rear brake feels soft",
+        lastShiftNoteAt: "2026-08-28T17:30:00.000Z",
+      },
+      {
+        id: "bk2",
+        registration: "CF34 DEF",
+        area: "E",
+        lastRecordedMileage: 9820,
+        lastShiftNote: null,
+        lastShiftNoteAt: null,
+      },
+      {
+        id: "bk3",
+        registration: "CF56 GHI",
+        area: "E",
+        lastRecordedMileage: 22110,
+        lastShiftNote: "Indicator bulb blown",
+        lastShiftNoteAt: "2026-08-27T12:00:00.000Z",
+      },
+    ];
+
+    it("shows no note card before a bike is chosen", async () => {
+      const user = userEvent.setup();
+      renderDrawer({ bikes: NOTED_BIKES });
+
+      await selectOption(user, "Rider", "Sarah Jones");
+
+      expect(screen.queryByTestId("last-shift-note")).not.toBeInTheDocument();
+    });
+
+    it("shows the note and when it was left as soon as the bike is chosen", async () => {
+      const user = userEvent.setup();
+      renderDrawer({ bikes: NOTED_BIKES });
+
+      await selectOption(user, "Rider", "Sarah Jones");
+      await selectOption(user, "Bike", "CF12 ABC");
+
+      const card = screen.getByTestId("last-shift-note");
+      expect(card).toHaveTextContent("Note from the last shift on CF12 ABC");
+      expect(card).toHaveTextContent("Rear brake feels soft");
+      expect(card).toHaveTextContent(/Left /);
+      // Above the mileage field.
+      expect(
+        card.compareDocumentPosition(screen.getByLabelText("Start mileage")) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("shows no card for a bike without a note", async () => {
+      const user = userEvent.setup();
+      renderDrawer({ bikes: NOTED_BIKES });
+
+      await selectOption(user, "Rider", "Sarah Jones");
+      await selectOption(user, "Bike", "CF34 DEF");
+
+      expect(screen.queryByTestId("last-shift-note")).not.toBeInTheDocument();
+    });
+
+    it("swaps or hides the card when the bike changes", async () => {
+      const user = userEvent.setup();
+      renderDrawer({ bikes: NOTED_BIKES });
+
+      await selectOption(user, "Rider", "Sarah Jones");
+      await selectOption(user, "Bike", "CF12 ABC");
+      expect(screen.getByTestId("last-shift-note")).toHaveTextContent(
+        "Rear brake feels soft",
+      );
+
+      await user.click(screen.getAllByRole("button", { name: "Change" })[1]);
+      await selectOption(user, "Bike", "CF56 GHI");
+      const card = screen.getByTestId("last-shift-note");
+      expect(card).toHaveTextContent("Note from the last shift on CF56 GHI");
+      expect(card).toHaveTextContent("Indicator bulb blown");
+      expect(card).not.toHaveTextContent("Rear brake feels soft");
+
+      await user.click(screen.getAllByRole("button", { name: "Change" })[1]);
+      await selectOption(user, "Bike", "CF34 DEF");
+      expect(screen.queryByTestId("last-shift-note")).not.toBeInTheDocument();
+    });
+  });
+
   it("calls onOpenChange when cancelled", async () => {
     const user = userEvent.setup();
     const { onOpenChange } = renderDrawer();

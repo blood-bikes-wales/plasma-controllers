@@ -128,6 +128,33 @@ describe("AssignBikeDrawer", () => {
     });
   });
 
+  it("shows the last shift's note once a bike with one is chosen and hides it otherwise", async () => {
+    const user = userEvent.setup();
+    renderDrawer({
+      bikes: [
+        {
+          ...BIKES[0],
+          lastShiftNote: "Rear brake feels soft",
+          lastShiftNoteAt: "2026-08-28T17:30:00.000Z",
+        },
+        { ...BIKES[2], lastShiftNote: null, lastShiftNoteAt: null },
+      ],
+    });
+    expect(screen.queryByTestId("last-shift-note")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox", { name: "Bike" }));
+    await user.click(await screen.findByRole("option", { name: "CF12 ABC" }));
+
+    const card = screen.getByTestId("last-shift-note");
+    expect(card).toHaveTextContent("Note from the last shift on CF12 ABC");
+    expect(card).toHaveTextContent("Rear brake feels soft");
+
+    await user.click(screen.getAllByRole("button", { name: "Change" })[0]);
+    await user.click(screen.getByRole("combobox", { name: "Bike" }));
+    await user.click(await screen.findByRole("option", { name: "CF56 GHI" }));
+    expect(screen.queryByTestId("last-shift-note")).not.toBeInTheDocument();
+  });
+
   it("explains when the rider has no area role", () => {
     renderDrawer({ rider: { ...RIDER, areas: [] } });
 
