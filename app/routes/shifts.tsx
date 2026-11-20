@@ -44,6 +44,8 @@ function ActiveShiftCard({
   onLogoff: () => void;
   onAssignBike: () => void;
 }) {
+  const shiftType = shift.shiftType?.trim();
+
   return (
     <Card className="h-full rounded-bb-card border-0 bg-bb-white py-5 shadow-none ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700">
       <CardContent className="space-y-4">
@@ -51,9 +53,17 @@ function ActiveShiftCard({
           <span className="text-base font-semibold text-bb-gray-900 dark:text-bb-gray-100">
             {shift.riderName}
           </span>
-          <Badge className="border-bb-status-active-border bg-bb-status-active-bg text-bb-status-active-text dark:bg-bb-navy-light/30 dark:text-blue-200">
-            On duty
-          </Badge>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {shiftType ? (
+              <Badge variant="outline">
+                <span className="sr-only">Shift type: </span>
+                {shiftType}
+              </Badge>
+            ) : null}
+            <Badge className="border-bb-status-active-border bg-bb-status-active-bg text-bb-status-active-text dark:bg-bb-navy-light/30 dark:text-blue-200">
+              On duty
+            </Badge>
+          </div>
         </div>
 
         <div className="space-y-1 text-sm text-bb-gray-500 dark:text-bb-gray-400">

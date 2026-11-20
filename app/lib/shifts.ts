@@ -28,6 +28,8 @@ export type ActiveShift = {
   startMileage: number | null;
   startedAt: string;
   mileageVarianceReason?: string | null;
+  /** Three Rings shift type (e.g. Milk, Sepsis); null when unrostered or unknown. */
+  shiftType?: string | null;
 };
 
 /** Send `bikeId` and `startMileage` together, or neither to log on without a bike. */
