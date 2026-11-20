@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "~/lib/api-client";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 import {
+  type CreateJobPayload,
   combineDayAndTime,
   createDeliveryJob,
   type DeliveryJob,
@@ -9,7 +10,9 @@ import {
   fetchJobs,
   formatEstimatedTime,
   formatJobCreatedAt,
+  formatMilkLitres,
   getJobDate,
+  isMilkJob,
   isRelayJob,
   jobErrorMessage,
 } from "~/lib/jobs";
@@ -63,7 +66,8 @@ describe("createDeliveryJob", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const payload = {
+    const payload: CreateJobPayload = {
+      jobType: "standard",
       sender: {
         name: "Dr. Smith",
         phone: "029 2074 7747",
@@ -201,5 +205,28 @@ describe("getJobDate", () => {
       "2026-03-10T09:00:00",
     );
     expect(getJobDate({ createdAt: null })).toBeNull();
+  });
+});
+
+describe("formatMilkLitres", () => {
+  it("formats litres without trailing zeros", () => {
+    expect(formatMilkLitres(2.5)).toBe("2.5 L");
+    expect(formatMilkLitres(2)).toBe("2 L");
+    expect(formatMilkLitres(0.25)).toBe("0.25 L");
+    expect(formatMilkLitres(100)).toBe("100 L");
+  });
+
+  it("returns an empty string when there is no quantity", () => {
+    expect(formatMilkLitres(null)).toBe("");
+    expect(formatMilkLitres(undefined)).toBe("");
+    expect(formatMilkLitres(Number.NaN)).toBe("");
+  });
+});
+
+describe("isMilkJob", () => {
+  it("is true only for milk jobs", () => {
+    expect(isMilkJob({ jobType: "milk" })).toBe(true);
+    expect(isMilkJob({ jobType: "standard" })).toBe(false);
+    expect(isMilkJob({})).toBe(false);
   });
 });

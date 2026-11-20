@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { AssignRiderDrawer } from "~/components/assign-rider-drawer";
 import { EstimatedTime } from "~/components/estimated-time";
 import { JobLegsPanel } from "~/components/job-legs-panel";
+import { JobTypeLabel } from "~/components/job-type-label";
 import { NewJobDrawer } from "~/components/new-job-drawer";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -210,6 +211,8 @@ function JobCard({
                 {job.status}
               </Badge>
             </div>
+
+            <JobTypeLabel job={job} />
 
             <JobRouteIndicator
               pickup={addressWithPostcode(

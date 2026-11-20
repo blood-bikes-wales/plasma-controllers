@@ -129,3 +129,19 @@ describe("ukPhoneSchema", () => {
     expect(ukPhoneSchema.parse("  +44 29 2074 7747 ")).toBe("+44 29 2074 7747");
   });
 });
+
+describe("apiFieldErrors for job types", () => {
+  it("lands milkLitres and jobType errors on their own fields", () => {
+    expect(
+      apiFieldErrors({
+        errors: {
+          milkLitres: ["Enter how many litres of milk are being collected."],
+          jobType: ["The selected job type is invalid."],
+        },
+      }),
+    ).toEqual({
+      milkLitres: "Enter how many litres of milk are being collected.",
+      jobType: "The selected job type is invalid.",
+    });
+  });
+});
