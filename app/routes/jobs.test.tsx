@@ -435,6 +435,192 @@ describe("JobsPage", () => {
     });
   });
 
+  describe("attention line", () => {
+    // Only Date is faked, and the clock is pinned, so nothing depends on the real time.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-20T12:00:00Z"));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const future = "2026-11-27T10:00:00Z";
+    const past = "2026-11-19T10:00:00Z";
+    const [newJob, allocatedJob] = mockActiveJobs;
+    const make = (
+      reference: string,
+      overrides: Partial<(typeof mockActiveJobs)[number]> = {},
+    ) => ({
+      ...newJob,
+      id: `99999999-9999-9999-9999-${reference.replace(/\D/g, "").padStart(12, "0")}`,
+      reference,
+      ...overrides,
+    });
+    const card = (reference: RegExp) =>
+      screen.getByRole("link", { name: reference });
+
+    it("shows the right line on each active card, and none where nothing needs chasing", async () => {
+      renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [Role.Controller] },
+          {
+            active: [
+              newJob,
+              allocatedJob,
+              make("JB-4001", {
+                jobType: "milk",
+                needsMotherContact: true,
+                scheduledCollectionAt: null,
+              }),
+              make("JB-4002", { scheduledCollectionAt: future }),
+              make("JB-4003", {
+                jobType: "milk",
+                needsMotherContact: false,
+                scheduledCollectionAt: future,
+              }),
+              make("JB-4004", { scheduledCollectionAt: past }),
+              make("JB-4005", {
+                status: "Allocated",
+                scheduledCollectionAt: future,
+                allocatedRider: allocatedJob.allocatedRider,
+              }),
+              // A relay parent is New while a leg is still unallocated; once all have riders it is Allocated.
+              make("JB-4006", {
+                isRelay: true,
+                scheduledCollectionAt: future,
+              }),
+              make("JB-4007", {
+                isRelay: true,
+                status: "Allocated",
+                scheduledCollectionAt: future,
+              }),
+              make("JB-4008", {
+                isRelay: true,
+                jobType: "milk",
+                needsMotherContact: true,
+                scheduledCollectionAt: null,
+              }),
+            ],
+          },
+        ),
+      });
+      await waitForJobsLoaded();
+
+      expect(
+        within(card(/JB-4001/)).getByText("Mother not contacted"),
+      ).toBeInTheDocument();
+      expect(
+        within(card(/JB-4002/)).getByText("No rider allocated"),
+      ).toBeInTheDocument();
+      expect(
+        within(card(/JB-4003/)).getByText("No rider allocated"),
+      ).toBeInTheDocument();
+      expect(
+        within(card(/JB-4006/)).getByText("No rider allocated"),
+      ).toBeInTheDocument();
+      expect(
+        within(card(/JB-4008/)).getByText("Mother not contacted"),
+      ).toBeInTheDocument();
+      expect(
+        within(card(/JB-4001/)).queryByText("No rider allocated"),
+      ).not.toBeInTheDocument();
+      for (const reference of [
+        /JB-1042/,
+        /JB-1038/,
+        /JB-4004/,
+        /JB-4005/,
+        /JB-4007/,
+      ]) {
+        expect(
+          within(card(reference)).queryByText(
+            /Mother not contacted|No rider allocated/,
+          ),
+        ).not.toBeInTheDocument();
+      }
+    });
+
+    it("keeps the line's icon out of the accessibility tree", async () => {
+      renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [Role.Controller] },
+          { active: [make("JB-4002", { scheduledCollectionAt: future })] },
+        ),
+      });
+      await screen.findByRole("link", { name: /JB-4002/ });
+
+      const line = screen.getByText("No rider allocated").closest("p");
+      expect(line?.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+      expect(line?.textContent).toBe("No rider allocated");
+    });
+
+    it.each([
+      Role.Rider,
+      Role.Driver,
+      Role.Trustee,
+    ])("derives 'Mother not contacted' for a %s, who is not sent the flag", async (role) => {
+      renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [role] },
+          {
+            // As the API sends it to this role: no needsMotherContact key.
+            active: [
+              make("JB-4001", { jobType: "milk", scheduledCollectionAt: null }),
+              make("JB-4003", {
+                jobType: "milk",
+                scheduledCollectionAt: future,
+              }),
+              make("JB-4004", { jobType: "standard" }),
+            ],
+          },
+        ),
+      });
+      await screen.findByRole("link", { name: /JB-4001/ });
+
+      expect(
+        within(card(/JB-4001/)).getByText("Mother not contacted"),
+      ).toBeInTheDocument();
+      expect(
+        within(card(/JB-4003/)).getByText("No rider allocated"),
+      ).toBeInTheDocument();
+      expect(
+        within(card(/JB-4004/)).queryByText(
+          /Mother not contacted|No rider allocated/,
+        ),
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows no line on the Completed tab, even for a future time", async () => {
+      const user = userEvent.setup();
+      const [delivered, cancelled] = mockCompletedJobs;
+      renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [Role.Controller] },
+          {
+            active: [newJob],
+            completed: [
+              { ...delivered, scheduledCollectionAt: future },
+              {
+                ...cancelled,
+                jobType: "milk",
+                needsMotherContact: true,
+                scheduledCollectionAt: null,
+              },
+            ],
+          },
+        ),
+      });
+      await waitForJobsLoaded();
+
+      await user.click(screen.getByRole("tab", { name: "Completed" }));
+      await screen.findByRole("link", { name: /JB-1020/ });
+
+      expect(
+        screen.queryByText(/Mother not contacted|No rider allocated/),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   it("shows the Bereavement badge only on jobs flagged as a bereavement", async () => {
     const [standard, other] = mockActiveJobs;
     renderJobsPage("/jobs", {

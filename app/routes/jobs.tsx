@@ -1,4 +1,10 @@
-import { CalendarClock, Clock, Plus, Search } from "lucide-react";
+import {
+  CalendarClock,
+  Clock,
+  Plus,
+  Search,
+  TriangleAlert,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { AssignRiderDrawer } from "~/components/assign-rider-drawer";
@@ -22,6 +28,7 @@ import {
   formatJobCreatedAt,
   formatScheduledCollection,
   isMilkJob,
+  jobAttentionLabel,
   jobErrorMessage,
   orderActiveJobsForBoard,
   upcomingCollectionAt,
@@ -209,6 +216,28 @@ function ScheduledCollection({ job }: { job: DeliveryJob }) {
   );
 }
 
+/**
+ * The one thing still to chase on a job ("Mother not contacted" or "No rider
+ * allocated"). Icon plus words, never colour alone; the icon is decorative.
+ */
+function AttentionLine({ job }: { job: DeliveryJob }) {
+  const label = jobAttentionLabel(job);
+  if (!label) {
+    return null;
+  }
+
+  return (
+    <p className="flex items-center gap-1.5 rounded-md border border-bb-warning-border bg-bb-warning-light px-2.5 py-1.5 text-sm font-semibold text-amber-900 dark:border-bb-warning/40 dark:bg-bb-warning/20 dark:text-amber-300">
+      {/* amber-900 for the icon too, not text-bb-warning: #d97706 on the amber-100 background is under 3:1. */}
+      <TriangleAlert
+        className="size-4 shrink-0 text-amber-900 dark:text-amber-300"
+        aria-hidden="true"
+      />
+      <span>{label}</span>
+    </p>
+  );
+}
+
 function JobCard({
   job,
   actionLabel,
@@ -243,6 +272,7 @@ function JobCard({
             <JobTypeLabel job={job} />
             <BereavementBadge job={job} />
             <ScheduledCollection job={job} />
+            <AttentionLine job={job} />
 
             <JobRouteIndicator
               pickup={addressWithPostcode(
