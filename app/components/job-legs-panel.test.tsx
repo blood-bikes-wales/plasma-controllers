@@ -82,3 +82,31 @@ describe("JobLegsPanel planned arrival", () => {
     });
   });
 });
+
+describe("JobLegsPanel waiting for an earlier leg", () => {
+  it("tells each blocked leg which leg it is waiting for and says nothing on a free leg", () => {
+    const first = leg(1, "Collection Hospital", "Handoff One", null);
+    const second = {
+      ...leg(2, "Handoff One", "Handoff Two", null),
+      waitingForLeg: 1,
+    };
+    const third = {
+      ...leg(3, "Handoff Two", "Final Hospital", null),
+      waitingForLeg: 2,
+    };
+
+    render(
+      <MemoryRouter>
+        <JobLegsPanel defaultExpanded legs={[first, second, third]} />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByText("Waiting for leg 1 to be delivered"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Waiting for leg 2 to be delivered"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/^Waiting for leg/)).toHaveLength(2);
+  });
+});

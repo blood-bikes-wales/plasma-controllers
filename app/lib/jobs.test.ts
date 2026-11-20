@@ -15,6 +15,7 @@ import {
   isMilkJob,
   isRelayJob,
   jobErrorMessage,
+  waitingForLegMessage,
 } from "~/lib/jobs";
 
 const COLLECTION = {
@@ -228,5 +229,18 @@ describe("isMilkJob", () => {
     expect(isMilkJob({ jobType: "milk" })).toBe(true);
     expect(isMilkJob({ jobType: "standard" })).toBe(false);
     expect(isMilkJob({})).toBe(false);
+  });
+});
+
+describe("waitingForLegMessage", () => {
+  it("names the leg that must be delivered first", () => {
+    expect(waitingForLegMessage({ waitingForLeg: 2 })).toBe(
+      "Waiting for leg 2 to be delivered",
+    );
+  });
+
+  it("is null when nothing is holding the leg back or the API does not say", () => {
+    expect(waitingForLegMessage({ waitingForLeg: null })).toBeNull();
+    expect(waitingForLegMessage({})).toBeNull();
   });
 });

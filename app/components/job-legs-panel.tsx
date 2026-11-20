@@ -5,7 +5,11 @@ import { Link } from "react-router";
 import { EstimatedTime } from "~/components/estimated-time";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { type DeliveryJob, displayJobReference } from "~/lib/jobs";
+import {
+  type DeliveryJob,
+  displayJobReference,
+  waitingForLegMessage,
+} from "~/lib/jobs";
 import { addressWithPostcode } from "~/lib/postcode";
 import { cn } from "~/lib/utils";
 
@@ -26,6 +30,8 @@ function statusBadgeClass(status: string) {
 }
 
 function LegSummary({ leg }: { leg: DeliveryJob }) {
+  const waiting = waitingForLegMessage(leg);
+
   return (
     <div className="space-y-1 text-sm text-bb-gray-600 dark:text-bb-gray-300">
       <p>
@@ -33,6 +39,11 @@ function LegSummary({ leg }: { leg: DeliveryJob }) {
       </p>
       <p>{addressWithPostcode(leg.delivery.address, leg.delivery.postcode)}</p>
       <EstimatedTime label="Arrives" estimatedAt={leg.plannedArrivalAt} />
+      {waiting ? (
+        <p className="font-medium text-bb-gray-700 dark:text-bb-gray-200">
+          {waiting}
+        </p>
+      ) : null}
     </div>
   );
 }

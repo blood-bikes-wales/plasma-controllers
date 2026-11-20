@@ -169,6 +169,12 @@ export type DeliveryJob = {
   deliveryRecord?: JobDeliveryRecord | null;
   cancellation?: JobCancellation | null;
   legs?: DeliveryJob[];
+  /**
+   * On a relay leg: the number of the earlier leg that must be delivered before
+   * this one can be collected or delivered. Null or absent when nothing is
+   * holding it back (and on an API that predates it).
+   */
+  waitingForLeg?: number | null;
   allowedActions?: JobAllowedAction[];
 };
 
@@ -239,6 +245,17 @@ export async function relayJob(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/** "Waiting for leg 2 to be delivered", or null when the leg is free to go. */
+export function waitingForLegMessage(
+  job: Pick<DeliveryJob, "waitingForLeg">,
+): string | null {
+  if (job.waitingForLeg === null || job.waitingForLeg === undefined) {
+    return null;
+  }
+
+  return `Waiting for leg ${job.waitingForLeg} to be delivered`;
 }
 
 export function allowedActionsForJob(job: DeliveryJob): JobAllowedAction[] {

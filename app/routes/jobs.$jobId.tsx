@@ -37,6 +37,7 @@ import {
   jobErrorMessage,
   performJobAction,
   relayJob,
+  waitingForLegMessage,
 } from "~/lib/jobs";
 import { addressWithPostcode } from "~/lib/postcode";
 import { type ActiveShift, fetchActiveShifts } from "~/lib/shifts";
@@ -618,6 +619,7 @@ export default function JobDetailPage() {
   }
 
   const allowed = allowedActionsForJob(job);
+  const waitingForLeg = waitingForLegMessage(job);
   const reference = displayJobReference(job);
   const createdLabel = formatJobCreatedAt(job.createdAt);
   // Normal jobs are collected and delivered on one fixed day, so only the time
@@ -659,6 +661,11 @@ export default function JobDetailPage() {
             <BereavementBadge job={job} />
           </div>
           <JobRouteSummary job={job} />
+          {waitingForLeg ? (
+            <p className="text-sm font-medium text-bb-gray-700 dark:text-bb-gray-200">
+              {waitingForLeg}
+            </p>
+          ) : null}
           {job.mother ? <MotherContact mother={job.mother} /> : null}
           <div className="space-y-1 text-sm text-bb-gray-600 dark:text-bb-gray-300">
             <p>
