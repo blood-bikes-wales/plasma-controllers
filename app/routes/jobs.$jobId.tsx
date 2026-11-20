@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { z } from "zod";
 
+import { EstimatedTime } from "~/components/estimated-time";
 import { FieldError } from "~/components/field-error";
 import { JobLegsPanel } from "~/components/job-legs-panel";
 import { RelayJobForm } from "~/components/relay-job-form";
@@ -85,6 +86,10 @@ function JobRouteSummary({ job }: { job: DeliveryJob }) {
           <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
             {job.collection.address}
           </p>
+          <EstimatedTime
+            label="Estimated collection"
+            estimatedAt={job.estimatedCollectionAt}
+          />
           {job.collection.notes ? (
             <p className="text-sm text-bb-gray-600 dark:text-bb-gray-300">
               {job.collection.notes}
@@ -95,6 +100,10 @@ function JobRouteSummary({ job }: { job: DeliveryJob }) {
           <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
             {job.delivery.address}
           </p>
+          <EstimatedTime
+            label="Estimated delivery"
+            estimatedAt={job.estimatedDeliveryAt}
+          />
           {job.delivery.notes ? (
             <p className="text-sm text-bb-gray-600 dark:text-bb-gray-300">
               {job.delivery.notes}

@@ -18,6 +18,7 @@ import {
 import { ApiError } from "~/lib/api-client";
 import {
   type CreateJobPayload,
+  combineDayAndTime,
   createDeliveryJob,
   type DeliveryJob,
   jobErrorMessage,
@@ -37,6 +38,14 @@ const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
 
 const NOTES_MAX = 500;
 const NOTES_TOO_LONG = `Notes must be ${NOTES_MAX} characters or fewer`;
+
+/** A blank time is valid; a filled one must be an HH:mm time-input value. */
+const estimatedTimeSchema = z
+  .string()
+  .trim()
+  .refine((value) => value === "" || /^([01]\d|2[0-3]):[0-5]\d$/.test(value), {
+    message: "Enter a valid time",
+  });
 
 const newJobFormSchema = z.object({
   senderName: z.string().trim().min(1, "Enter the caller's name"),
@@ -58,6 +67,8 @@ const newJobFormSchema = z.object({
     }),
   collectionNotes: z.string().trim().max(NOTES_MAX, NOTES_TOO_LONG),
   deliveryNotes: z.string().trim().max(NOTES_MAX, NOTES_TOO_LONG),
+  estimatedCollection: estimatedTimeSchema,
+  estimatedDelivery: estimatedTimeSchema,
   contents: z.string().trim().min(1, "Describe the item or contents"),
   serviceAreas: z.array(z.string()).min(1, "Choose at least one service area"),
 });
@@ -72,6 +83,8 @@ const EMPTY_FORM: NewJobFormState = {
   delivery: null,
   collectionNotes: "",
   deliveryNotes: "",
+  estimatedCollection: "",
+  estimatedDelivery: "",
   contents: "",
   serviceAreas: [],
 };
@@ -135,6 +148,40 @@ function NotesField({
   );
 }
 
+function EstimatedTimeField({
+  id,
+  label,
+  value,
+  onChange,
+  error,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline gap-1">
+        <Label htmlFor={id} className="text-bb-gray-700 dark:text-bb-gray-300">
+          {label}
+        </Label>
+        <span className="text-sm text-bb-gray-500">(optional)</span>
+      </div>
+      <Input
+        id={id}
+        type="time"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-invalid={!!error}
+        className="h-11 text-base dark:bg-input/30"
+      />
+      <FieldError message={error} />
+    </div>
+  );
+}
+
 function withNotes(
   location: PlaceLocation,
   notes: string,
@@ -153,12 +200,23 @@ function payloadFromForm(
     organisation: organisation || undefined,
   };
 
+  // A job being created is for today, so a filled time is combined with the
+  // current calendar day.
+  const today = new Date().toISOString();
+  const estimatedCollectionAt = combineDayAndTime(
+    today,
+    form.estimatedCollection,
+  );
+  const estimatedDeliveryAt = combineDayAndTime(today, form.estimatedDelivery);
+
   return {
     sender,
     collection: withNotes(form.collection, form.collectionNotes),
     delivery: withNotes(form.delivery, form.deliveryNotes),
     contents: form.contents,
     serviceAreas: form.serviceAreas,
+    ...(estimatedCollectionAt ? { estimatedCollectionAt } : {}),
+    ...(estimatedDeliveryAt ? { estimatedDeliveryAt } : {}),
   };
 }
 
@@ -415,6 +473,13 @@ export function NewJobDrawer({
                 error={errors.collectionNotes}
                 placeholder="e.g. Path lab"
               />
+              <EstimatedTimeField
+                id="estimated-collection"
+                label="Estimated collection"
+                value={form.estimatedCollection}
+                onChange={(value) => updateField("estimatedCollection", value)}
+                error={errors.estimatedCollection}
+              />
             </FormSection>
 
             <FormSection title="Delivery">
@@ -432,6 +497,13 @@ export function NewJobDrawer({
                 onChange={(value) => updateField("deliveryNotes", value)}
                 error={errors.deliveryNotes}
                 placeholder="e.g. Reception outside"
+              />
+              <EstimatedTimeField
+                id="estimated-delivery"
+                label="Estimated delivery"
+                value={form.estimatedDelivery}
+                onChange={(value) => updateField("estimatedDelivery", value)}
+                error={errors.estimatedDelivery}
               />
             </FormSection>
 

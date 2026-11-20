@@ -403,6 +403,141 @@ describe("NewJobDrawer", () => {
     expect(payload.delivery).not.toHaveProperty("notes");
   });
 
+  it("has optional estimated collection and delivery time inputs", () => {
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    expect(screen.getByLabelText("Estimated collection")).toHaveAttribute(
+      "type",
+      "time",
+    );
+    expect(screen.getByLabelText("Estimated delivery")).toHaveAttribute(
+      "type",
+      "time",
+    );
+    expect(screen.getAllByText("(optional)").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("can be submitted with both estimated times empty", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn(async (_payload: CreateJobPayload) => CREATED_JOB);
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => {
+      expect(createJob).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createJob.mock.calls[0];
+    expect(payload).not.toHaveProperty("estimatedCollectionAt");
+    expect(payload).not.toHaveProperty("estimatedDeliveryAt");
+  });
+
+  it("combines a filled estimate with today and sends it as an ISO timestamp", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn(async (_payload: CreateJobPayload) => CREATED_JOB);
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    await user.type(screen.getByLabelText("Estimated collection"), "09:30");
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => {
+      expect(createJob).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createJob.mock.calls[0];
+    const expected = new Date();
+    expected.setHours(9, 30, 0, 0);
+    expect(payload.estimatedCollectionAt).toBe(expected.toISOString());
+    expect(payload).not.toHaveProperty("estimatedDeliveryAt");
+  });
+
+  it("sends both estimates when both are filled", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn(async (_payload: CreateJobPayload) => CREATED_JOB);
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    await user.type(screen.getByLabelText("Estimated collection"), "09:30");
+    await user.type(screen.getByLabelText("Estimated delivery"), "11:15");
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => {
+      expect(createJob).toHaveBeenCalledTimes(1);
+    });
+    const [payload] = createJob.mock.calls[0];
+    const collection = new Date();
+    collection.setHours(9, 30, 0, 0);
+    const delivery = new Date();
+    delivery.setHours(11, 15, 0, 0);
+    expect(payload.estimatedCollectionAt).toBe(collection.toISOString());
+    expect(payload.estimatedDeliveryAt).toBe(delivery.toISOString());
+  });
+
+  it("shows an API error for an estimated time next to its input", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn(async (_payload: CreateJobPayload) => {
+      throw new ApiError(422, "Validation failed", {
+        body: {
+          errors: {
+            estimatedDeliveryAt: ["The estimated delivery at is invalid."],
+          },
+        },
+      });
+    });
+
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    expect(
+      await screen.findByText("The estimated delivery at is invalid."),
+    ).toBeInTheDocument();
+  });
+
   it("does not remember notes in recent or most-used places", async () => {
     const user = userEvent.setup();
     const createJob = vi.fn(

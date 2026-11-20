@@ -2,6 +2,7 @@ import { Clock, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { AssignRiderDrawer } from "~/components/assign-rider-drawer";
+import { EstimatedTime } from "~/components/estimated-time";
 import { JobLegsPanel } from "~/components/job-legs-panel";
 import { NewJobDrawer } from "~/components/new-job-drawer";
 import { Badge } from "~/components/ui/badge";
@@ -125,9 +126,13 @@ function matchesSearch(query: string, job: DeliveryJob) {
 function JobRouteIndicator({
   pickup,
   delivery,
+  estimatedCollectionAt,
+  estimatedDeliveryAt,
 }: {
   pickup: string;
   delivery: string;
+  estimatedCollectionAt?: string | null;
+  estimatedDeliveryAt?: string | null;
 }) {
   return (
     <div className="flex gap-3">
@@ -137,12 +142,24 @@ function JobRouteIndicator({
         <span className="size-2.5 shrink-0 rounded-full border-2 border-bb-navy bg-bb-white dark:border-bb-navy-light dark:bg-bb-gray-700" />
       </div>
       <div className="min-w-0 space-y-3">
-        <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
-          {pickup}
-        </p>
-        <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
-          {delivery}
-        </p>
+        <div>
+          <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
+            {pickup}
+          </p>
+          <EstimatedTime
+            label="Estimated collection"
+            estimatedAt={estimatedCollectionAt}
+          />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-bb-gray-900 dark:text-bb-gray-100">
+            {delivery}
+          </p>
+          <EstimatedTime
+            label="Estimated delivery"
+            estimatedAt={estimatedDeliveryAt}
+          />
+        </div>
       </div>
     </div>
   );
@@ -196,6 +213,8 @@ function JobCard({
             <JobRouteIndicator
               pickup={job.collection.address}
               delivery={job.delivery.address}
+              estimatedCollectionAt={job.estimatedCollectionAt}
+              estimatedDeliveryAt={job.estimatedDeliveryAt}
             />
 
             <div className="flex items-center justify-between gap-3 border-t border-bb-gray-100 pt-4 dark:border-bb-gray-700">

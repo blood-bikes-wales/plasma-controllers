@@ -7,6 +7,7 @@ import {
   type DeliveryJob,
   displayJobReference,
   fetchJobs,
+  formatEstimatedTime,
   formatJobCreatedAt,
   getJobDate,
   isRelayJob,
@@ -129,6 +130,20 @@ describe("formatJobCreatedAt", () => {
 
   it("returns the original string when the timestamp is invalid", () => {
     expect(formatJobCreatedAt("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("formatEstimatedTime", () => {
+  it("returns an empty string when there is no estimate", () => {
+    expect(formatEstimatedTime(null)).toBe("");
+    expect(formatEstimatedTime(undefined)).toBe("");
+  });
+
+  it("labels an estimate for today with just the time", () => {
+    const nineThirty = new Date();
+    nineThirty.setHours(9, 30, 0, 0);
+
+    expect(formatEstimatedTime(nineThirty.toISOString())).toBe("Today, 09:30");
   });
 });
 

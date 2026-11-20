@@ -8,7 +8,7 @@ import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 import { Role } from "~/lib/roles";
 
 import { mockAuthUser } from "../../tests/auth-fixtures";
-import { stubJobsFetch } from "../../tests/job-fixtures";
+import { mockActiveJobs, stubJobsFetch } from "../../tests/job-fixtures";
 import JobsPage, { meta } from "./jobs";
 import JobsNewRoute from "./jobs-new";
 import JobsNewAssignRoute from "./jobs-new-assign";
@@ -251,5 +251,42 @@ describe("JobsPage", () => {
       "href",
       "/jobs/11111111-1111-1111-1111-111111111111",
     );
+  });
+
+  it("shows an estimate on the card next to the matching address", async () => {
+    const collection = new Date();
+    collection.setHours(9, 30, 0, 0);
+    const [first, ...rest] = mockActiveJobs;
+    renderJobsPage("/jobs", {
+      fetchImpl: stubJobsFetch(
+        { ...mockAuthUser, roles: [Role.Controller] },
+        {
+          active: [
+            {
+              ...first,
+              estimatedCollectionAt: collection.toISOString(),
+              estimatedDeliveryAt: null,
+            },
+            ...rest,
+          ],
+        },
+      ),
+    });
+    await waitForJobsLoaded();
+
+    const card = within(screen.getByRole("link", { name: /JB-1042/i }));
+    const estimate = card.getByText("Estimated collection: Today, 09:30");
+    expect(estimate.previousElementSibling).toHaveTextContent(
+      first.collection.address,
+    );
+    expect(card.queryByText(/Estimated delivery/)).not.toBeInTheDocument();
+  });
+
+  it("shows no estimate lines when a job has none", async () => {
+    renderJobsPage();
+    await waitForJobsLoaded();
+
+    expect(screen.queryByText(/Estimated collection/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Estimated delivery/)).not.toBeInTheDocument();
   });
 });
