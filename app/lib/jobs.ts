@@ -486,6 +486,62 @@ export function formatScheduledCollection(
 }
 
 /**
+ * When a collection or delivery was recorded, in the viewer's local time: just
+ * "14:30" when that was today, "12 Mar, 14:30" on another day, and "" when
+ * there is no usable time.
+ */
+export function formatRecordedAt(iso: string | null | undefined): string {
+  if (!iso) {
+    return "";
+  }
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const time = date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const today = new Date();
+  const sameDay =
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate();
+  if (sameDay) {
+    return time;
+  }
+
+  const day = date.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+  return `${day}, ${time}`;
+}
+
+/** "Collected 14:30 · job JN-2042" (no time when the API sent none). */
+export function collectionRecordText(
+  record: Pick<JobCollectionRecord, "receiptNumber" | "collectedAt">,
+): string {
+  const at = formatRecordedAt(record.collectedAt);
+  return `Collected${at ? ` ${at}` : ""} · job ${record.receiptNumber}`;
+}
+
+/** "Delivered 15:10 to Sister Jones" or "Delivered 15:10, no recipient". */
+export function deliveryRecordText(
+  record: Pick<JobDeliveryRecord, "recipient" | "noRecipient" | "deliveredAt">,
+): string {
+  const at = formatRecordedAt(record.deliveredAt);
+  const delivered = `Delivered${at ? ` ${at}` : ""}`;
+  if (record.noRecipient) {
+    return `${delivered}, no recipient`;
+  }
+
+  return record.recipient ? `${delivered} to ${record.recipient}` : delivered;
+}
+
+/**
  * The arranged collection time to show as upcoming: set, and the job is still
  * New or Allocated. Once collected, delivered or cancelled it is history.
  */

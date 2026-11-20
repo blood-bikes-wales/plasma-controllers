@@ -3,15 +3,18 @@ import { ApiError } from "~/lib/api-client";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 import {
   type CreateJobPayload,
+  collectionRecordText,
   combineDayAndTime,
   createDeliveryJob,
   type DeliveryJob,
+  deliveryRecordText,
   displayJobReference,
   fetchJobById,
   fetchJobs,
   formatEstimatedTime,
   formatJobCreatedAt,
   formatMilkLitres,
+  formatRecordedAt,
   formatScheduledCollection,
   getJobDate,
   isMilkJob,
@@ -280,6 +283,102 @@ describe("formatScheduledCollection", () => {
     expect(formatScheduledCollection(null)).toBe("");
     expect(formatScheduledCollection(undefined)).toBe("");
     expect(formatScheduledCollection("not a date")).toBe("");
+  });
+});
+
+describe("formatRecordedAt", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows just the time for today and the day and time otherwise", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 29, 18, 0));
+
+    expect(formatRecordedAt("2026-08-29T14:30:00")).toBe("14:30");
+    expect(formatRecordedAt("2026-08-28T14:30:00")).toBe("28 Aug, 14:30");
+    expect(formatRecordedAt("2025-08-29T09:05:00")).toBe("29 Aug, 09:05");
+  });
+
+  it("is empty when there is no usable time", () => {
+    expect(formatRecordedAt(null)).toBe("");
+    expect(formatRecordedAt(undefined)).toBe("");
+    expect(formatRecordedAt("")).toBe("");
+    expect(formatRecordedAt("not a date")).toBe("");
+  });
+});
+
+describe("collectionRecordText", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("says when it was collected and the job number", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 29, 18, 0));
+
+    expect(
+      collectionRecordText({
+        receiptNumber: "JB-0042",
+        collectedAt: "2026-08-29T14:30:00",
+      }),
+    ).toBe("Collected 14:30 · job JB-0042");
+  });
+
+  it("leaves out the time when the API sent none", () => {
+    expect(
+      collectionRecordText({ receiptNumber: "JB-0042", collectedAt: null }),
+    ).toBe("Collected · job JB-0042");
+  });
+});
+
+describe("deliveryRecordText", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("says when it was delivered and to whom", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 29, 18, 0));
+
+    expect(
+      deliveryRecordText({
+        recipient: "Sister Jones",
+        noRecipient: false,
+        deliveredAt: "2026-08-29T15:10:00",
+      }),
+    ).toBe("Delivered 15:10 to Sister Jones");
+    expect(
+      deliveryRecordText({
+        recipient: null,
+        noRecipient: true,
+        deliveredAt: "2026-08-29T15:10:00",
+      }),
+    ).toBe("Delivered 15:10, no recipient");
+  });
+
+  it("leaves out the time when the API sent none", () => {
+    expect(
+      deliveryRecordText({
+        recipient: "Sister Jones",
+        noRecipient: false,
+        deliveredAt: null,
+      }),
+    ).toBe("Delivered to Sister Jones");
+    expect(
+      deliveryRecordText({
+        recipient: null,
+        noRecipient: true,
+        deliveredAt: null,
+      }),
+    ).toBe("Delivered, no recipient");
+    expect(
+      deliveryRecordText({
+        recipient: null,
+        noRecipient: false,
+        deliveredAt: null,
+      }),
+    ).toBe("Delivered");
   });
 });
 

@@ -172,7 +172,11 @@ function applyLifecycleAction(
       collectionRecord: {
         contentsConfirmed: Boolean(payload.contentsConfirmed),
         receiptNumber: String(payload.receiptNumber ?? "RCP-1"),
-        collectedAt: new Date().toISOString(),
+        // Like the API: the time the controller entered, else now.
+        collectedAt:
+          typeof payload.collectedAt === "string"
+            ? payload.collectedAt
+            : new Date().toISOString(),
       },
     };
   }
@@ -188,7 +192,10 @@ function applyLifecycleAction(
             ? null
             : String(payload.recipient ?? "Recipient"),
         noRecipient: payload.noRecipient === true,
-        deliveredAt: new Date().toISOString(),
+        deliveredAt:
+          typeof payload.deliveredAt === "string"
+            ? payload.deliveredAt
+            : new Date().toISOString(),
       },
     };
   }
@@ -242,6 +249,13 @@ function applyRelayConversion(
   };
 }
 
+export type RecordFailures = {
+  [action in "collect" | "deliver"]?: (
+    | "network"
+    | { status: number; message: string; errors?: Record<string, string[]> }
+  )[];
+};
+
 export function stubJobsFetch(
   user: AuthUser,
   {
@@ -252,6 +266,7 @@ export function stubJobsFetch(
     activeShifts = mockActiveShifts,
     allocateError,
     allocateFailure,
+    recordFailures = {},
   }: {
     active?: DeliveryJob[];
     completed?: DeliveryJob[];
@@ -273,8 +288,18 @@ export function stubJobsFetch(
       message: string;
       errors?: Record<string, string[]>;
     };
+    /**
+     * Make the next POST .../actions/collect (or deliver) calls fail, one entry
+     * per call in order; once the list is used up the calls succeed. "network"
+     * rejects the fetch like a dropped connection.
+     */
+    recordFailures?: RecordFailures;
   } = {},
 ) {
+  const pendingRecordFailures = {
+    collect: [...(recordFailures.collect ?? [])],
+    deliver: [...(recordFailures.deliver ?? [])],
+  };
   const activeState = [...active];
   const completedState = [...completed];
   const legState: DeliveryJob[] = [];
@@ -459,6 +484,23 @@ export function stubJobsFetch(
           },
           allocateFailure.status,
         );
+      }
+
+      if (lifecycleAction === "collect" || lifecycleAction === "deliver") {
+        const failure = pendingRecordFailures[lifecycleAction].shift();
+        if (failure === "network") {
+          throw new TypeError("Failed to fetch");
+        }
+
+        if (failure) {
+          return jsonResponse(
+            {
+              message: failure.message,
+              ...(failure.errors ? { errors: failure.errors } : {}),
+            },
+            failure.status,
+          );
+        }
       }
 
       if (lifecycleAction === "allocate" && allocateError) {

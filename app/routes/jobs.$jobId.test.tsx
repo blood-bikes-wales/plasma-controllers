@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import {
   createMemoryRouter,
   Outlet,
@@ -24,6 +25,7 @@ import { mockAuthUser } from "../../tests/auth-fixtures";
 import {
   mockActiveJobs,
   mockActiveShifts,
+  type RecordFailures,
   stubJobsFetch,
 } from "../../tests/job-fixtures";
 import { appRoutes } from "../../tests/routes-config";
@@ -49,8 +51,11 @@ function renderJobDetail({
   activeShifts,
   allocateError,
   allocateFailure,
+  recordFailures,
+  strictMode = false,
 }: {
   jobId?: string;
+  strictMode?: boolean;
   roles?: Role[];
   active?: DeliveryJob[];
   olderCompleted?: DeliveryJob[];
@@ -61,6 +66,7 @@ function renderJobDetail({
     message: string;
     errors?: Record<string, string[]>;
   };
+  recordFailures?: RecordFailures;
 } = {}) {
   const user = { ...mockAuthUser, roles };
   setAuthToken("test-google-id-token");
@@ -72,6 +78,7 @@ function renderJobDetail({
       ...(activeShifts ? { activeShifts } : {}),
       ...(allocateError ? { allocateError } : {}),
       ...(allocateFailure ? { allocateFailure } : {}),
+      ...(recordFailures ? { recordFailures } : {}),
     }),
   );
   vi.stubGlobal("fetch", fetchStub);
@@ -80,7 +87,8 @@ function renderJobDetail({
     initialEntries: [`/jobs/${jobId}`],
   });
 
-  render(<RouterProvider router={router} />);
+  const page = <RouterProvider router={router} />;
+  render(strictMode ? <StrictMode>{page}</StrictMode> : page);
 
   return { fetchStub, router };
 }
@@ -369,6 +377,28 @@ function allocateBodies(fetchStub: ReturnType<typeof vi.fn>) {
   return allocateCalls(fetchStub).map(([, init]) =>
     JSON.parse(String((init as RequestInit | undefined)?.body)),
   );
+}
+
+/** GET /jobs/{id} calls the page makes, with the response swapped for `served` once the page has loaded. */
+function serveJobAfterLoad(jobId: string, served: DeliveryJob) {
+  const realFetch = globalThis.fetch;
+  const reads: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method?.toUpperCase() ?? "GET";
+      if (method === "GET" && url.endsWith(`/jobs/${jobId}`)) {
+        reads.push(url);
+        return new Response(JSON.stringify(served), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return realFetch(input, init);
+    }),
+  );
+  return reads;
 }
 
 describe("Allocate rider on selection", () => {
@@ -756,28 +786,6 @@ describe("Allocate rider on selection", () => {
     );
   });
 
-  /** GET /jobs/{id} calls the page makes, with the response swapped for `served` once the page has loaded. */
-  function serveJobAfterLoad(jobId: string, served: DeliveryJob) {
-    const realFetch = globalThis.fetch;
-    const reads: string[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        const method = init?.method?.toUpperCase() ?? "GET";
-        if (method === "GET" && url.endsWith(`/jobs/${jobId}`)) {
-          reads.push(url);
-          return new Response(JSON.stringify(served), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return realFetch(input, init);
-      }),
-    );
-    return reads;
-  }
-
   it("reloads the job once after a failure about the job's state, so a stale page corrects itself", async () => {
     const user = userEvent.setup();
     const [, allocated] = mockActiveJobs;
@@ -929,9 +937,8 @@ describe("Record collection job number", () => {
     const user = userEvent.setup();
     renderJobDetail({ jobId: allocatedJobId });
 
-    await user.click(
-      await screen.findByRole("button", { name: "Record collection" }),
-    );
+    await user.click(await screen.findByLabelText("Job number"));
+    await user.keyboard("{Enter}");
 
     expect(await screen.findByText("Enter a job number")).toBeInTheDocument();
     expect(screen.queryByText(/receipt number/i)).not.toBeInTheDocument();
@@ -943,10 +950,11 @@ describe("Record collection job number", () => {
 
     await user.click(await screen.findByLabelText("Contents confirmed"));
     await user.click(await screen.findByRole("option", { name: "Yes" }));
-    await user.type(screen.getByLabelText("Job number"), "JN-2042");
-    await user.click(screen.getByRole("button", { name: "Record collection" }));
+    await user.type(screen.getByLabelText("Job number"), "JN-2042{Enter}");
 
-    expect(await screen.findByText("Collected · job JN-2042")).toBeVisible();
+    expect(
+      await screen.findByText(/^Collected .+ · job JN-2042$/),
+    ).toBeVisible();
     expect(screen.queryByText(/receipt/i)).not.toBeInTheDocument();
   });
 });
@@ -974,10 +982,11 @@ describe("Record collection fields", () => {
 
     await user.click(await screen.findByLabelText("Contents confirmed"));
     await user.click(await screen.findByRole("option", { name: "Yes" }));
-    await user.type(screen.getByLabelText("Job number"), "JN-2043");
-    await user.click(screen.getByRole("button", { name: "Record collection" }));
+    await user.type(screen.getByLabelText("Job number"), "JN-2043{Enter}");
 
-    expect(await screen.findByText("Collected · job JN-2043")).toBeVisible();
+    expect(
+      await screen.findByText(/^Collected .+ · job JN-2043$/),
+    ).toBeVisible();
 
     const collectCall = fetchStub.mock.calls.find(([input]) =>
       String(input instanceof Request ? input.url : input).includes(
@@ -1070,9 +1079,12 @@ describe("Record collection and delivery time only", () => {
     fireEvent.change(screen.getByLabelText("Collection time"), {
       target: { value: "14:30" },
     });
-    await user.click(screen.getByRole("button", { name: "Record collection" }));
+    await user.click(screen.getByLabelText("Job number"));
+    await user.keyboard("{Enter}");
 
-    expect(await screen.findByText("Collected · job JN-3001")).toBeVisible();
+    expect(
+      await screen.findByText("Collected 10 Mar, 14:30 · job JN-3001"),
+    ).toBeVisible();
     const { collectedAt } = requestBody(fetchStub, "collect");
     expect(localDay(collectedAt)).toEqual([2026, 3, 10]);
     const sent = new Date(collectedAt);
@@ -1093,10 +1105,13 @@ describe("Record collection and delivery time only", () => {
 
     await user.type(screen.getByLabelText("Recipient"), "Sister Jones");
     fireEvent.change(input, { target: { value: "16:45" } });
-    await user.click(screen.getByRole("button", { name: "Record delivery" }));
+    await user.click(screen.getByLabelText("Recipient"));
+    await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(screen.getByText("Delivered to Sister Jones")).toBeVisible();
+      expect(
+        screen.getByText("Delivered 10 Mar, 16:45 to Sister Jones"),
+      ).toBeVisible();
     });
     const { deliveredAt } = requestBody(fetchStub, "deliver");
     expect(localDay(deliveredAt)).toEqual([2026, 3, 10]);
@@ -1115,7 +1130,8 @@ describe("Record collection and delivery time only", () => {
     expect(
       screen.getByRole("checkbox", { name: "No person or recipient" }),
     ).not.toBeChecked();
-    await user.click(screen.getByRole("button", { name: "Record delivery" }));
+    await user.click(screen.getByLabelText("Recipient"));
+    await user.keyboard("{Enter}");
 
     expect(await screen.findByText("Enter the recipient")).toBeVisible();
     expect(
@@ -1150,9 +1166,8 @@ describe("Record collection and delivery time only", () => {
     const user = userEvent.setup();
     renderJobDetail({ jobId: collected.id, active: [collected] });
 
-    await user.click(
-      await screen.findByRole("button", { name: "Record delivery" }),
-    );
+    await user.click(await screen.findByLabelText("Recipient"));
+    await user.keyboard("{Enter}");
     expect(await screen.findByText("Enter the recipient")).toBeVisible();
 
     await user.click(
@@ -1168,13 +1183,15 @@ describe("Record collection and delivery time only", () => {
       active: [collected],
     });
 
+    // Ticking the box is the last missing field: it records at once.
     await user.click(
       await screen.findByRole("checkbox", { name: "No person or recipient" }),
     );
-    await user.click(screen.getByRole("button", { name: "Record delivery" }));
 
-    expect(await screen.findByText("Delivered, no recipient")).toBeVisible();
-    expect(screen.queryByText(/Delivered to/)).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/^Delivered .+, no recipient$/),
+    ).toBeVisible();
+    expect(screen.queryByText(/Delivered .* to /)).not.toBeInTheDocument();
     const body = requestBody(fetchStub, "deliver");
     expect(body.noRecipient).toBe(true);
     expect(body).not.toHaveProperty("recipient");
@@ -1187,10 +1204,14 @@ describe("Record collection and delivery time only", () => {
       active: [collected],
     });
 
-    await user.type(await screen.findByLabelText("Recipient"), "Sister Jones");
-    await user.click(screen.getByRole("button", { name: "Record delivery" }));
+    await user.type(
+      await screen.findByLabelText("Recipient"),
+      "Sister Jones{Enter}",
+    );
 
-    expect(await screen.findByText("Delivered to Sister Jones")).toBeVisible();
+    expect(
+      await screen.findByText(/^Delivered .+ to Sister Jones$/),
+    ).toBeVisible();
     const body = requestBody(fetchStub, "deliver");
     expect(body.noRecipient).toBe(false);
     expect(body.recipient).toBe("Sister Jones");
@@ -1211,7 +1232,9 @@ describe("Record collection and delivery time only", () => {
     };
     renderJobDetail({ jobId: delivered.id, active: [delivered] });
 
-    expect(await screen.findByText("Delivered, no recipient")).toBeVisible();
+    expect(
+      await screen.findByText("Delivered 10 Mar, 16:45, no recipient"),
+    ).toBeVisible();
   });
 
   it("keeps the date-and-time picker for a leg of a relay", async () => {
@@ -1907,11 +1930,12 @@ describe("Job detail: call the mother and schedule a milk collection", () => {
       fireEvent.change(screen.getByLabelText("Collection time"), {
         target: { value: "14:30" },
       });
-      await user.click(
-        screen.getByRole("button", { name: "Record collection" }),
-      );
+      await user.click(screen.getByLabelText("Job number"));
+      await user.keyboard("{Enter}");
 
-      expect(await screen.findByText("Collected · job JN-3001")).toBeVisible();
+      expect(
+        await screen.findByText("Collected 12 Mar, 14:30 · job JN-3001"),
+      ).toBeVisible();
       const { collectedAt } = bodyOf(fetchStub, "collect");
       expect(localDay(collectedAt)).toEqual([2026, 3, 12]);
       const sent = new Date(collectedAt);
@@ -1929,10 +1953,13 @@ describe("Job detail: call the mother and schedule a milk collection", () => {
       expect(screen.getByText("On Thu 12 Mar (the job's day)")).toBeVisible();
       await user.type(screen.getByLabelText("Recipient"), "Sister Jones");
       fireEvent.change(input, { target: { value: "16:45" } });
-      await user.click(screen.getByRole("button", { name: "Record delivery" }));
+      await user.click(screen.getByLabelText("Recipient"));
+      await user.keyboard("{Enter}");
 
       await waitFor(() => {
-        expect(screen.getByText("Delivered to Sister Jones")).toBeVisible();
+        expect(
+          screen.getByText("Delivered 12 Mar, 16:45 to Sister Jones"),
+        ).toBeVisible();
       });
       const { deliveredAt } = bodyOf(fetchStub, "deliver");
       expect(localDay(deliveredAt)).toEqual([2026, 3, 12]);
@@ -1947,6 +1974,1012 @@ describe("Job detail: call the mother and schedule a milk collection", () => {
       expect(
         await screen.findByText("On Tue 10 Mar (the job's day)"),
       ).toBeVisible();
+    });
+  });
+});
+
+describe("Record collection and delivery on submit", () => {
+  // Local time (no "Z") so the job's calendar day is the same in any timezone.
+  const createdAt = "2026-03-10T09:00:00";
+  const allocated: DeliveryJob = {
+    ...mockActiveJobs[1],
+    createdAt,
+    scheduledCollectionAt: null,
+  };
+  const collected: DeliveryJob = {
+    ...allocated,
+    id: "33333333-3333-3333-3333-333333333333",
+    status: "Collected",
+    allowedActions: ["deliver", "cancel"],
+  };
+  const relayLeg: DeliveryJob = {
+    ...allocated,
+    id: "44444444-4444-4444-4444-444444444444",
+    reference: "JB-2000-L1",
+    parentJobId: "55555555-5555-5555-5555-555555555555",
+    legNumber: 1,
+  };
+  const relayParent: DeliveryJob = {
+    ...allocated,
+    id: "55555555-5555-5555-5555-555555555555",
+    reference: "JB-2000",
+    isRelay: true,
+    legs: [relayLeg],
+  };
+
+  type Stub = ReturnType<typeof renderJobDetail>["fetchStub"];
+  type User = ReturnType<typeof userEvent.setup>;
+
+  function posts(fetchStub: Stub, action: "collect" | "deliver") {
+    return fetchStub.mock.calls.filter(
+      ([input, init]) =>
+        String(input).includes(`/actions/${action}`) &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+  }
+
+  function bodies(fetchStub: Stub, action: "collect" | "deliver") {
+    return posts(fetchStub, action).map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body)),
+    );
+  }
+
+  /** Let any request the page would make go out, then check none did. */
+  async function settle() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    });
+  }
+
+  function renderCollect(options: Parameters<typeof renderJobDetail>[0] = {}) {
+    return renderJobDetail({
+      jobId: allocated.id,
+      active: [allocated],
+      ...options,
+    });
+  }
+
+  function renderDeliver(options: Parameters<typeof renderJobDetail>[0] = {}) {
+    return renderJobDetail({
+      jobId: collected.id,
+      active: [collected],
+      ...options,
+    });
+  }
+
+  async function chooseContents(user: User, option = "Yes") {
+    await user.click(await screen.findByLabelText("Contents confirmed"));
+    await user.click(await screen.findByRole("option", { name: option }));
+  }
+
+  function setTime(label: string, value: string) {
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  }
+
+  /** Hold every request for `action` open until `release()`. */
+  function holdRequests(action: "collect" | "deliver") {
+    const realFetch = globalThis.fetch;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).includes(`/actions/${action}`)) {
+          await gate;
+        }
+        return realFetch(input, init);
+      }),
+    );
+    return release;
+  }
+
+  describe("no buttons", () => {
+    it("has no Record collection button, only the fields and a hint about when it saves", async () => {
+      renderCollect();
+
+      const section = await screen.findByRole("region", {
+        name: "Record collection",
+      });
+      expect(
+        screen.queryByRole("button", { name: /record collection/i }),
+      ).not.toBeInTheDocument();
+      expect(within(section).queryByRole("button")).not.toBeInTheDocument();
+      expect(
+        within(section).getByText(
+          /Records when you press Enter or leave the form once everything is filled in/,
+        ),
+      ).toBeVisible();
+      expect(screen.getByLabelText("Contents confirmed")).toBeInTheDocument();
+      expect(screen.getByLabelText("Job number")).toBeInTheDocument();
+      expect(screen.getByLabelText("Collection time")).toBeInTheDocument();
+    });
+
+    it("has no Record delivery button, only the fields and the same hint", async () => {
+      renderDeliver();
+
+      const section = await screen.findByRole("region", {
+        name: "Record delivery",
+      });
+      expect(
+        screen.queryByRole("button", { name: /record delivery/i }),
+      ).not.toBeInTheDocument();
+      expect(within(section).queryByRole("button")).not.toBeInTheDocument();
+      expect(
+        within(section).getByText(
+          /Records when you press Enter or leave the form once everything is filled in/,
+        ),
+      ).toBeVisible();
+      expect(screen.getByLabelText("Recipient")).toBeInTheDocument();
+      expect(
+        screen.getByRole("checkbox", { name: "No person or recipient" }),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Delivery time")).toBeInTheDocument();
+    });
+
+    it("describes the form with the hint", async () => {
+      renderCollect();
+
+      const section = await screen.findByRole("region", {
+        name: "Record collection",
+      });
+      const form = section.querySelector("form");
+      expect(form).toHaveAccessibleDescription(
+        /Records when you press Enter or leave the form/,
+      );
+    });
+  });
+
+  describe("an incomplete form posts nothing", () => {
+    it.each([
+      {
+        missing: "contents confirmed",
+        fill: async (user: User) => {
+          await user.type(screen.getByLabelText("Job number"), "JN-1");
+        },
+        error: "Confirm whether the contents match the job",
+      },
+      {
+        missing: "job number",
+        fill: async (user: User) => {
+          await chooseContents(user);
+          await user.click(screen.getByLabelText("Job number"));
+        },
+        error: "Enter a job number",
+      },
+      {
+        missing: "job number (only spaces)",
+        fill: async (user: User) => {
+          await chooseContents(user);
+          await user.type(screen.getByLabelText("Job number"), "   ");
+        },
+        error: "Enter a job number",
+      },
+      {
+        missing: "collection time",
+        fill: async (user: User) => {
+          await chooseContents(user);
+          await user.type(screen.getByLabelText("Job number"), "JN-1");
+          setTime("Collection time", "");
+        },
+        error: "Enter a collection time",
+      },
+    ])("collection: $missing missing, Enter and leaving the form both do nothing", async ({
+      fill,
+      error,
+    }) => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+      await screen.findByLabelText("Job number");
+
+      await fill(user);
+      await user.keyboard("{Enter}");
+      expect(await screen.findByText(error)).toBeVisible();
+
+      await user.click(document.body);
+      await settle();
+
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+    });
+
+    it("collection: a time that is not a time is refused", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-1");
+      // A time input reports "" for a half-typed time, but never trust that.
+      fireEvent.change(screen.getByLabelText("Collection time"), {
+        target: { value: "25:99" },
+      });
+      await user.keyboard("{Enter}");
+      await settle();
+
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+    });
+
+    it.each([
+      {
+        missing: "recipient",
+        fill: async (user: User) => {
+          await user.click(screen.getByLabelText("Recipient"));
+        },
+        error: "Enter the recipient",
+      },
+      {
+        missing: "recipient (only spaces)",
+        fill: async (user: User) => {
+          await user.type(screen.getByLabelText("Recipient"), "   ");
+        },
+        error: "Enter the recipient",
+      },
+      {
+        missing: "delivery time",
+        fill: async (user: User) => {
+          await user.type(screen.getByLabelText("Recipient"), "Sister Jones");
+          setTime("Delivery time", "");
+        },
+        error: "Enter a delivery time",
+      },
+    ])("delivery: $missing missing, Enter and leaving the form both do nothing", async ({
+      fill,
+      error,
+    }) => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver();
+      await screen.findByLabelText("Recipient");
+
+      await fill(user);
+      await user.keyboard("{Enter}");
+      expect(await screen.findByText(error)).toBeVisible();
+
+      await user.click(document.body);
+      await settle();
+
+      expect(posts(fetchStub, "deliver")).toHaveLength(0);
+    });
+
+    it("delivery: ticking 'No person or recipient' with no delivery time posts nothing", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver();
+      await screen.findByLabelText("Delivery time");
+
+      setTime("Delivery time", "");
+      await user.click(
+        screen.getByRole("checkbox", { name: "No person or recipient" }),
+      );
+      await settle();
+
+      expect(posts(fetchStub, "deliver")).toHaveLength(0);
+    });
+
+    it("collection: choosing the contents does not record while the job number is empty", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await chooseContents(user);
+      await settle();
+
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+    });
+
+    it("delivery: unticking the box does not record", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver({
+        recordFailures: { deliver: [{ status: 500, message: "Nope." }] },
+      });
+
+      const box = await screen.findByRole("checkbox", {
+        name: "No person or recipient",
+      });
+      await user.click(box);
+      expect(await screen.findByRole("alert")).toHaveTextContent("Nope.");
+      await user.click(box);
+      await settle();
+
+      expect(posts(fetchStub, "deliver")).toHaveLength(1);
+    });
+  });
+
+  describe("nothing happens by itself", () => {
+    it.each([
+      { name: "plain", strictMode: false },
+      { name: "StrictMode", strictMode: true },
+    ])("posts nothing on mount ($name)", async ({ strictMode }) => {
+      const { fetchStub } = renderCollect({ strictMode });
+      await screen.findByLabelText("Job number");
+      await settle();
+
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+    });
+
+    it("posts nothing when tabbing through the unchanged collection form and out of it", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+      const field = await screen.findByLabelText("Contents confirmed");
+
+      field.focus();
+      // Contents, job number, collection time, then out into the next section.
+      await user.tab();
+      await user.tab();
+      await user.tab();
+      await user.tab();
+      await user.click(document.body);
+      await settle();
+
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+    });
+
+    it("posts nothing when tabbing through the delivery form whose time is prefilled", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver();
+      const recipient = await screen.findByLabelText("Recipient");
+
+      expect(screen.getByLabelText("Delivery time")).not.toHaveValue("");
+      recipient.focus();
+      await user.tab();
+      await user.tab();
+      await user.tab();
+      await user.tab();
+      await user.click(document.body);
+      await settle();
+
+      expect(posts(fetchStub, "deliver")).toHaveLength(0);
+    });
+
+    it("posts nothing for a field that was changed and put back", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver({
+        recordFailures: { deliver: [{ status: 500, message: "Nope." }] },
+      });
+      const recipient = await screen.findByLabelText("Recipient");
+      const original = (
+        screen.getByLabelText("Delivery time") as HTMLInputElement
+      ).value;
+
+      // A failed attempt first, so the form is complete and kept.
+      await user.type(recipient, "Sister Jones{Enter}");
+      expect(await screen.findByRole("alert")).toBeVisible();
+      expect(posts(fetchStub, "deliver")).toHaveLength(1);
+
+      setTime("Delivery time", "04:20");
+      setTime("Delivery time", original);
+      await user.click(document.body);
+      await settle();
+
+      expect(posts(fetchStub, "deliver")).toHaveLength(1);
+    });
+
+    it("does not post per keystroke", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-0042");
+      await settle();
+
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+    });
+  });
+
+  describe("completing the form", () => {
+    it("collection: choosing the contents last records once with the right payload", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await user.type(await screen.findByLabelText("Job number"), "JN-0042");
+      setTime("Collection time", "14:30");
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+      await chooseContents(user, "No");
+
+      expect(
+        await screen.findByText("Collected 10 Mar, 14:30 · job JN-0042"),
+      ).toBeVisible();
+      expect(posts(fetchStub, "collect")).toHaveLength(1);
+      const [body] = bodies(fetchStub, "collect");
+      expect(Object.keys(body).sort()).toEqual([
+        "collectedAt",
+        "contentsConfirmed",
+        "receiptNumber",
+      ]);
+      expect(body.contentsConfirmed).toBe(false);
+      expect(body.receiptNumber).toBe("JN-0042");
+      const sent = new Date(body.collectedAt);
+      expect([
+        sent.getFullYear(),
+        sent.getMonth() + 1,
+        sent.getDate(),
+        sent.getHours(),
+        sent.getMinutes(),
+      ]).toEqual([2026, 3, 10, 14, 30]);
+    });
+
+    it("collection: Enter in the job number records once, trimmed", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "  JN-7  {Enter}");
+
+      expect(await screen.findByText(/job JN-7$/)).toBeVisible();
+      expect(bodies(fetchStub, "collect")).toMatchObject([
+        { contentsConfirmed: true, receiptNumber: "JN-7" },
+      ]);
+    });
+
+    it.each([
+      "Contents confirmed",
+      "Job number",
+      "Collection time",
+    ])("collection: Enter in the %s field of a complete form records", async (label) => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-8");
+      await user.click(screen.getByLabelText(label));
+      await user.keyboard("{Enter}");
+
+      expect(await screen.findByText(/job JN-8$/)).toBeVisible();
+      expect(posts(fetchStub, "collect")).toHaveLength(1);
+    });
+
+    it("delivery: ticking 'No person or recipient' last records once without a recipient", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver();
+      await screen.findByLabelText("Delivery time");
+
+      setTime("Delivery time", "15:10");
+      await user.click(
+        screen.getByRole("checkbox", { name: "No person or recipient" }),
+      );
+
+      expect(
+        await screen.findByText("Delivered 10 Mar, 15:10, no recipient"),
+      ).toBeVisible();
+      expect(posts(fetchStub, "deliver")).toHaveLength(1);
+      const [body] = bodies(fetchStub, "deliver");
+      expect(body.noRecipient).toBe(true);
+      expect(body).not.toHaveProperty("recipient");
+      expect(new Date(body.deliveredAt).getHours()).toBe(15);
+      expect(new Date(body.deliveredAt).getMinutes()).toBe(10);
+    });
+
+    it("delivery: Enter with a recipient records once with it", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver();
+      await screen.findByLabelText("Delivery time");
+
+      setTime("Delivery time", "15:10");
+      await user.type(
+        screen.getByLabelText("Recipient"),
+        "Sister Jones{Enter}",
+      );
+
+      expect(
+        await screen.findByText("Delivered 10 Mar, 15:10 to Sister Jones"),
+      ).toBeVisible();
+      expect(bodies(fetchStub, "deliver")).toMatchObject([
+        { recipient: "Sister Jones", noRecipient: false },
+      ]);
+    });
+
+    it("delivery: ticking the box on an already complete form waits for Enter", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver();
+      await screen.findByLabelText("Delivery time");
+
+      await user.type(screen.getByLabelText("Recipient"), "Sister Jones");
+      await user.click(
+        screen.getByRole("checkbox", { name: "No person or recipient" }),
+      );
+      await settle();
+      // The recipient field is now cleared and disabled; nothing was missing,
+      // so the toggle alone was not the completing step.
+      expect(posts(fetchStub, "deliver")).toHaveLength(0);
+
+      await user.keyboard("{Enter}");
+      expect(await screen.findByText(/, no recipient$/)).toBeVisible();
+      expect(bodies(fetchStub, "deliver")).toMatchObject([
+        { noRecipient: true },
+      ]);
+    });
+
+    it("relay leg: the date-and-time picker records the entered date and time", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderJobDetail({
+        jobId: relayLeg.id,
+        active: [relayParent],
+      });
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-9");
+      setTime("Collection time", "2026-03-11T08:15");
+      await user.keyboard("{Enter}");
+      await settle();
+
+      const [body] = bodies(fetchStub, "collect");
+      const sent = new Date(body.collectedAt);
+      expect([sent.getDate(), sent.getHours(), sent.getMinutes()]).toEqual([
+        11, 8, 15,
+      ]);
+    });
+  });
+
+  describe("leaving the form", () => {
+    it("records after an edit when focus leaves the form", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-0050");
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+      await user.click(document.body);
+
+      expect(await screen.findByText(/job JN-0050$/)).toBeVisible();
+      expect(posts(fetchStub, "collect")).toHaveLength(1);
+    });
+
+    it("records when tabbing out of the last field after editing an earlier one", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-0051");
+      // Into the time field: still inside the form.
+      await user.tab();
+      expect(screen.getByLabelText("Collection time")).toHaveFocus();
+      await settle();
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+      // Out of the form.
+      await user.tab();
+
+      expect(await screen.findByText(/job JN-0051$/)).toBeVisible();
+      expect(posts(fetchStub, "collect")).toHaveLength(1);
+    });
+
+    it("does not record when focus moves to another field inside the form", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver();
+      await screen.findByLabelText("Delivery time");
+
+      await user.type(screen.getByLabelText("Recipient"), "Sister Jones");
+      await user.click(screen.getByLabelText("Delivery time"));
+      await user.click(screen.getByLabelText("Recipient"));
+      await user.click(
+        screen.getByRole("checkbox", { name: "No person or recipient" }),
+      );
+      await settle();
+
+      expect(posts(fetchStub, "deliver")).toHaveLength(0);
+    });
+
+    it("does not record when the window loses focus and the field keeps it", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver();
+      await screen.findByLabelText("Delivery time");
+
+      const recipient = screen.getByLabelText("Recipient");
+      await user.type(recipient, "Sister Jones");
+      expect(recipient).toHaveFocus();
+      // What a browser sends when the user switches tab or app.
+      fireEvent.blur(recipient);
+      await settle();
+
+      expect(posts(fetchStub, "deliver")).toHaveLength(0);
+    });
+
+    it("does not record when a press inside the form blurs the field without focusing another (Safari/Firefox on a checkbox)", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver();
+      await screen.findByLabelText("Delivery time");
+
+      const recipient = screen.getByLabelText("Recipient");
+      await user.type(recipient, "Sister Jones");
+      const box = screen.getByRole("checkbox", {
+        name: "No person or recipient",
+      });
+      fireEvent.mouseDown(box);
+      act(() => recipient.blur());
+      fireEvent.mouseUp(box);
+      await settle();
+
+      expect(posts(fetchStub, "deliver")).toHaveLength(0);
+
+      // The same blur without a press inside is leaving the form.
+      act(() => recipient.focus());
+      fireEvent.change(recipient, { target: { value: "Sister Jones 2" } });
+      act(() => recipient.blur());
+      expect(await screen.findByText(/to Sister Jones 2$/)).toBeVisible();
+      expect(posts(fetchStub, "deliver")).toHaveLength(1);
+    });
+  });
+
+  describe("while the request runs", () => {
+    it("disables every field and says Saving… in a status that is always there", async () => {
+      const user = userEvent.setup();
+      renderCollect();
+      const section = await screen.findByRole("region", {
+        name: "Record collection",
+      });
+      // Always rendered, empty while idle.
+      const status = within(section).getByRole("status");
+      expect(status).toBeEmptyDOMElement();
+      const release = holdRequests("collect");
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-1{Enter}");
+
+      expect(await within(section).findByText("Saving…")).toBeVisible();
+      expect(within(section).getByRole("status")).toBe(status);
+      expect(screen.getByLabelText("Job number")).toBeDisabled();
+      expect(screen.getByLabelText("Collection time")).toBeDisabled();
+      expect(
+        within(section).getByRole("button", { name: "Change" }),
+      ).toBeDisabled();
+
+      release();
+      expect(await screen.findByText(/job JN-1$/)).toBeVisible();
+    });
+
+    it("disables the delivery fields too", async () => {
+      const user = userEvent.setup();
+      renderDeliver();
+      const section = await screen.findByRole("region", {
+        name: "Record delivery",
+      });
+      const release = holdRequests("deliver");
+
+      await user.type(
+        screen.getByLabelText("Recipient"),
+        "Sister Jones{Enter}",
+      );
+
+      expect(await within(section).findByText("Saving…")).toBeVisible();
+      expect(screen.getByLabelText("Recipient")).toBeDisabled();
+      expect(screen.getByLabelText("Delivery time")).toBeDisabled();
+      expect(
+        screen.getByRole("checkbox", { name: "No person or recipient" }),
+      ).toBeDisabled();
+
+      release();
+      expect(await screen.findByText(/to Sister Jones$/)).toBeVisible();
+    });
+
+    it("posts once for a double Enter, an Enter then a blur, and repeated selection", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await chooseContents(user);
+      const job = screen.getByLabelText("Job number");
+      await user.type(job, "JN-2");
+      act(() => {
+        fireEvent.keyDown(job, { key: "Enter" });
+        fireEvent.keyDown(job, { key: "Enter" });
+        fireEvent.blur(job);
+        fireEvent.keyDown(job, { key: "Enter" });
+      });
+
+      expect(await screen.findByText(/job JN-2$/)).toBeVisible();
+      expect(posts(fetchStub, "collect")).toHaveLength(1);
+    });
+
+    it("posts once for the delivery checkbox reported twice", async () => {
+      const { fetchStub } = renderDeliver();
+
+      const box = await screen.findByRole("checkbox", {
+        name: "No person or recipient",
+      });
+      act(() => {
+        fireEvent.click(box);
+        fireEvent.click(box);
+      });
+
+      expect(await screen.findByText(/, no recipient$/)).toBeVisible();
+      expect(posts(fetchStub, "deliver")).toHaveLength(1);
+    });
+
+    it("posts once under StrictMode", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect({ strictMode: true });
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-3{Enter}");
+
+      expect(await screen.findByText(/job JN-3$/)).toBeVisible();
+      await settle();
+      expect(posts(fetchStub, "collect")).toHaveLength(1);
+    });
+
+    it("ignores Enter while a key is held down", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect();
+
+      await chooseContents(user);
+      const job = screen.getByLabelText("Job number");
+      await user.type(job, "JN-4");
+      fireEvent.keyDown(job, { key: "Enter", repeat: true });
+      fireEvent.keyDown(job, { key: "Enter", isComposing: true });
+      fireEvent.keyDown(job, { key: "Enter", keyCode: 229 });
+      await settle();
+
+      expect(posts(fetchStub, "collect")).toHaveLength(0);
+    });
+  });
+
+  describe("when the request fails", () => {
+    it("collection: keeps the values, shows the error under the form and retries on the next Enter", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect({
+        recordFailures: {
+          collect: [
+            {
+              status: 422,
+              message: "That job number is already in use.",
+              errors: { receiptNumber: ["That job number is already in use."] },
+            },
+          ],
+        },
+      });
+      const section = await screen.findByRole("region", {
+        name: "Record collection",
+      });
+
+      await chooseContents(user);
+      setTime("Collection time", "14:30");
+      await user.type(screen.getByLabelText("Job number"), "JN-5{Enter}");
+
+      const alert = await within(section).findByRole("alert");
+      expect(alert).toHaveTextContent("That job number is already in use.");
+      expect(screen.getByLabelText("Contents confirmed")).toHaveValue("Yes");
+      expect(screen.getByLabelText("Job number")).toHaveValue("JN-5");
+      expect(screen.getByLabelText("Collection time")).toHaveValue("14:30");
+      expect(screen.getByLabelText("Job number")).toBeEnabled();
+      expect(screen.getByLabelText("Job number")).toHaveFocus();
+      expect(within(section).getByRole("status")).toBeEmptyDOMElement();
+      expect(screen.getByText("Allocated")).toBeInTheDocument();
+
+      // Nothing retries by itself, not even on leaving the unchanged form.
+      await user.click(document.body);
+      await settle();
+      expect(posts(fetchStub, "collect")).toHaveLength(1);
+
+      // Enter tries again with the same values.
+      await user.click(screen.getByLabelText("Job number"));
+      await user.keyboard("{Enter}");
+      expect(await screen.findByText(/job JN-5$/)).toBeVisible();
+      expect(posts(fetchStub, "collect")).toHaveLength(2);
+      expect(bodies(fetchStub, "collect")[1]).toEqual(
+        bodies(fetchStub, "collect")[0],
+      );
+    });
+
+    it("collection: after a failure an edit and leaving the form retries once", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderCollect({
+        recordFailures: {
+          collect: [{ status: 422, message: "Bad job number." }],
+        },
+      });
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-6{Enter}");
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Bad job number.",
+      );
+
+      await user.type(screen.getByLabelText("Job number"), "7");
+      await user.click(document.body);
+
+      expect(await screen.findByText(/job JN-67$/)).toBeVisible();
+      expect(posts(fetchStub, "collect")).toHaveLength(2);
+      expect(bodies(fetchStub, "collect")[1].receiptNumber).toBe("JN-67");
+    });
+
+    it("delivery: keeps the values after a network error and retries on Enter", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver({
+        recordFailures: { deliver: ["network"] },
+      });
+      const section = await screen.findByRole("region", {
+        name: "Record delivery",
+      });
+
+      await user.type(
+        screen.getByLabelText("Recipient"),
+        "Sister Jones{Enter}",
+      );
+
+      expect(await within(section).findByRole("alert")).toBeVisible();
+      expect(screen.getByLabelText("Recipient")).toHaveValue("Sister Jones");
+      expect(screen.getByLabelText("Recipient")).toBeEnabled();
+      expect(posts(fetchStub, "deliver")).toHaveLength(1);
+
+      await user.keyboard("{Enter}");
+      expect(await screen.findByText(/to Sister Jones$/)).toBeVisible();
+      expect(posts(fetchStub, "deliver")).toHaveLength(2);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("delivery: a failed toggle keeps the box ticked and Enter retries", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderDeliver({
+        recordFailures: {
+          deliver: [{ status: 500, message: "Server error." }],
+        },
+      });
+
+      const box = await screen.findByRole("checkbox", {
+        name: "No person or recipient",
+      });
+      await user.click(box);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Server error.",
+      );
+      expect(box).toBeChecked();
+      expect(box).toBeEnabled();
+
+      box.focus();
+      await user.keyboard("{Enter}");
+      expect(await screen.findByText(/, no recipient$/)).toBeVisible();
+      expect(posts(fetchStub, "deliver")).toHaveLength(2);
+    });
+  });
+
+  describe("after it is recorded", () => {
+    it("shows what was recorded in place of the collection form", async () => {
+      const user = userEvent.setup();
+      renderCollect();
+
+      await chooseContents(user);
+      setTime("Collection time", "14:30");
+      await user.type(screen.getByLabelText("Job number"), "JB-0042{Enter}");
+
+      const line = await screen.findByText(
+        "Collected 10 Mar, 14:30 · job JB-0042",
+      );
+      expect(line).toBeVisible();
+      expect(line).toHaveAttribute("role", "status");
+      expect(screen.getAllByText(/job JB-0042/)).toHaveLength(1);
+      expect(screen.getByText("Collected")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: "Record collection" }),
+      ).not.toBeInTheDocument();
+      // The delivery form is the next step.
+      expect(
+        screen.getByRole("region", { name: "Record delivery" }),
+      ).toBeInTheDocument();
+    });
+
+    it("shows what was recorded in place of the delivery form", async () => {
+      const user = userEvent.setup();
+      renderDeliver();
+      await screen.findByLabelText("Delivery time");
+
+      setTime("Delivery time", "15:10");
+      await user.type(
+        screen.getByLabelText("Recipient"),
+        "Sister Jones{Enter}",
+      );
+
+      const line = await screen.findByText(
+        "Delivered 10 Mar, 15:10 to Sister Jones",
+      );
+      expect(line).toBeVisible();
+      expect(screen.getAllByText(/Sister Jones/)).toHaveLength(1);
+      expect(screen.getByText("Delivered")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: "Record delivery" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe("when the job has moved on", () => {
+    it("reloads the job once after a failure about its state and says why", async () => {
+      const user = userEvent.setup();
+      const message = "Job is Collected. Allowed actions: deliver, cancel.";
+      const { fetchStub } = renderCollect({
+        recordFailures: {
+          collect: [{ status: 422, message, errors: { action: [message] } }],
+        },
+      });
+      await screen.findByRole("region", { name: "Record collection" });
+      const reads = serveJobAfterLoad(allocated.id, {
+        ...allocated,
+        status: "Collected",
+        allowedActions: ["deliver", "cancel"],
+      });
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-10{Enter}");
+
+      expect(
+        await screen.findByRole("region", { name: "Record delivery" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("region", { name: "Record collection" }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent(message);
+      expect(screen.getByText("Collected")).toBeInTheDocument();
+
+      await settle();
+      expect(reads).toHaveLength(1);
+      expect(posts(fetchStub, "collect")).toHaveLength(1);
+    });
+
+    it("reloads the job once after a 409 on delivery", async () => {
+      const user = userEvent.setup();
+      const message = "This job was already delivered.";
+      const { fetchStub } = renderDeliver({
+        recordFailures: { deliver: [{ status: 409, message }] },
+      });
+      await screen.findByRole("region", { name: "Record delivery" });
+      const reads = serveJobAfterLoad(collected.id, {
+        ...collected,
+        status: "Delivered",
+        allowedActions: [],
+        deliveryRecord: {
+          recipient: "Matron",
+          noRecipient: false,
+          deliveredAt: "2026-03-10T15:00:00",
+        },
+      });
+
+      await user.type(
+        screen.getByLabelText("Recipient"),
+        "Sister Jones{Enter}",
+      );
+
+      expect(
+        await screen.findByText("Delivered 10 Mar, 15:00 to Matron"),
+      ).toBeVisible();
+      expect(screen.getByRole("alert")).toHaveTextContent(message);
+      await settle();
+      expect(reads).toHaveLength(1);
+      expect(posts(fetchStub, "deliver")).toHaveLength(1);
+    });
+
+    it("keeps the form and its error when the reload shows the job can still be collected", async () => {
+      const user = userEvent.setup();
+      renderCollect({
+        recordFailures: { collect: [{ status: 409, message: "Conflict." }] },
+      });
+      await screen.findByRole("region", { name: "Record collection" });
+      const reads = serveJobAfterLoad(allocated.id, allocated);
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-11{Enter}");
+
+      await waitFor(() => expect(reads).toHaveLength(1));
+      expect(await screen.findAllByRole("alert")).toHaveLength(1);
+      expect(screen.getByLabelText("Job number")).toHaveValue("JN-11");
+    });
+
+    it.each([
+      {
+        name: "a validation error on a field",
+        status: 422,
+        errors: { receiptNumber: ["Bad."] },
+      },
+      { name: "a server error", status: 500, errors: undefined },
+    ])("does not reload the job after $name", async ({ status, errors }) => {
+      const user = userEvent.setup();
+      renderCollect({
+        recordFailures: {
+          collect: [{ status, message: "Bad.", ...(errors ? { errors } : {}) }],
+        },
+      });
+      await screen.findByRole("region", { name: "Record collection" });
+      const reads = serveJobAfterLoad(allocated.id, allocated);
+
+      await chooseContents(user);
+      await user.type(screen.getByLabelText("Job number"), "JN-12{Enter}");
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Bad.");
+      await settle();
+      expect(reads).toHaveLength(0);
     });
   });
 });
