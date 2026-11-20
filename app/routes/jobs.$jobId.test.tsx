@@ -858,3 +858,76 @@ describe("Job detail relay arrival times", () => {
     });
   });
 });
+
+describe("Job detail waiting for an earlier relay leg", () => {
+  const [baseJob] = mockActiveJobs;
+
+  function leg(
+    legNumber: number,
+    overrides: Partial<DeliveryJob>,
+  ): DeliveryJob {
+    return {
+      ...baseJob,
+      id: `leg-${legNumber}`,
+      reference: `JB-2300-L${legNumber}`,
+      legNumber,
+      parentJobId: "relay-parent",
+      ...overrides,
+    };
+  }
+
+  const parent: DeliveryJob = {
+    ...baseJob,
+    id: "relay-parent",
+    reference: "JB-2300",
+    isRelay: true,
+    allowedActions: ["cancel"],
+    legs: [
+      leg(1, { status: "Collected", allowedActions: ["deliver", "cancel"] }),
+      leg(2, {
+        status: "Allocated",
+        waitingForLeg: 1,
+        allowedActions: ["cancel"],
+      }),
+      leg(3, {
+        status: "Allocated",
+        waitingForLeg: 2,
+        allowedActions: ["cancel"],
+      }),
+    ],
+  };
+
+  it("shows the waiting message and no Record forms on a blocked leg", async () => {
+    renderJobDetail({ jobId: "leg-3", active: [parent] });
+
+    expect(
+      await screen.findByText("Waiting for leg 2 to be delivered"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Record collection" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Record delivery" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the Record delivery form and no waiting message on a leg that is free", async () => {
+    renderJobDetail({ jobId: "leg-1", active: [parent] });
+
+    expect(
+      await screen.findByRole("region", { name: "Record delivery" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Waiting for leg/)).not.toBeInTheDocument();
+  });
+
+  it("shows the waiting message beside each blocked leg in the legs panel", async () => {
+    renderJobDetail({ jobId: parent.id, active: [parent] });
+
+    expect(
+      await screen.findByText("Waiting for leg 1 to be delivered"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Waiting for leg 2 to be delivered"),
+    ).toBeInTheDocument();
+  });
+});
