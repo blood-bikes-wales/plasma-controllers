@@ -61,4 +61,24 @@ describe("JobLegsPanel planned arrival", () => {
       screen.getAllByText("Handoff One")[0],
     );
   });
+
+  describe("JobLegsPanel postcodes", () => {
+    it("shows a postcode after each leg address unless the address has it", () => {
+      const first = leg(1, "Collection Hospital", "Handoff One cf2 2bb", null);
+      const withPostcodes: DeliveryJob = {
+        ...first,
+        collection: { ...first.collection, postcode: "CF1 1AA" },
+        delivery: { ...first.delivery, postcode: "CF2 2BB" },
+      };
+
+      render(
+        <MemoryRouter>
+          <JobLegsPanel defaultExpanded legs={[withPostcodes]} />
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText("Collection Hospital, CF1 1AA")).toBeVisible();
+      expect(screen.getByText("Handoff One cf2 2bb")).toBeVisible();
+    });
+  });
 });

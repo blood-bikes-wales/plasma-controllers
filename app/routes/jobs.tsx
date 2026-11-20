@@ -18,6 +18,7 @@ import {
   formatJobCreatedAt,
   jobErrorMessage,
 } from "~/lib/jobs";
+import { addressWithPostcode } from "~/lib/postcode";
 import { cn } from "~/lib/utils";
 
 import type { Route } from "./+types/jobs";
@@ -211,8 +212,14 @@ function JobCard({
             </div>
 
             <JobRouteIndicator
-              pickup={job.collection.address}
-              delivery={job.delivery.address}
+              pickup={addressWithPostcode(
+                job.collection.address,
+                job.collection.postcode,
+              )}
+              delivery={addressWithPostcode(
+                job.delivery.address,
+                job.delivery.postcode,
+              )}
               estimatedCollectionAt={job.estimatedCollectionAt}
               estimatedDeliveryAt={job.estimatedDeliveryAt}
             />

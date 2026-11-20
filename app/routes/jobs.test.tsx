@@ -289,4 +289,59 @@ describe("JobsPage", () => {
     expect(screen.queryByText(/Estimated collection/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Estimated delivery/)).not.toBeInTheDocument();
   });
+
+  it("shows each postcode after its address, and not twice when the address has it", async () => {
+    const [first, ...rest] = mockActiveJobs;
+    renderJobsPage("/jobs", {
+      fetchImpl: stubJobsFetch(
+        { ...mockAuthUser, roles: [Role.Controller] },
+        {
+          active: [
+            {
+              ...first,
+              collection: { ...first.collection, postcode: "CF72 8XR" },
+              delivery: {
+                ...first.delivery,
+                address: "University Hospital of Wales, Cardiff CF14 4XW, UK",
+                postcode: "cf144xw",
+              },
+            },
+            ...rest,
+          ],
+        },
+      ),
+    });
+    await waitForJobsLoaded();
+
+    const card = within(screen.getByRole("link", { name: /JB-1042/i }));
+    expect(
+      card.getByText(`${first.collection.address}, CF72 8XR`),
+    ).toBeInTheDocument();
+    expect(
+      card.getByText("University Hospital of Wales, Cardiff CF14 4XW, UK"),
+    ).toBeInTheDocument();
+    expect(card.queryByText(/cf144xw/i)).not.toBeInTheDocument();
+  });
+
+  it("shows just the address when the place has no postcode", async () => {
+    const [first, ...rest] = mockActiveJobs;
+    renderJobsPage("/jobs", {
+      fetchImpl: stubJobsFetch(
+        { ...mockAuthUser, roles: [Role.Controller] },
+        {
+          active: [
+            {
+              ...first,
+              collection: { ...first.collection, postcode: null },
+            },
+            ...rest,
+          ],
+        },
+      ),
+    });
+    await waitForJobsLoaded();
+
+    const card = within(screen.getByRole("link", { name: /JB-1042/i }));
+    expect(card.getByText(first.collection.address)).toBeInTheDocument();
+  });
 });

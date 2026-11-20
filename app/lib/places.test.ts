@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { placeDetails, suggestPlaces } from "~/lib/places";
+import {
+  cachedPlaceDetails,
+  clearPlaceDetailsCache,
+  placeDetails,
+  suggestPlaces,
+} from "~/lib/places";
 
 function mockPlacesLibrary({
   predictions,
@@ -14,6 +19,11 @@ function mockPlacesLibrary({
     place_id: string;
     name?: string;
     formatted_address: string;
+    address_components?: Array<{
+      long_name: string;
+      short_name?: string;
+      types: string[];
+    }>;
     geometry: { location: { lat: () => number; lng: () => number } };
   } | null;
   detailsStatus?: string;
@@ -47,6 +57,7 @@ function mockPlacesLibrary({
 
 afterEach(() => {
   window.google = undefined;
+  clearPlaceDetailsCache();
 });
 
 describe("suggestPlaces", () => {
@@ -125,5 +136,112 @@ describe("placeDetails", () => {
       latitude: 51.684,
       longitude: -3.938,
     });
+  });
+
+  it("reads the postal_code component into postcode", async () => {
+    mockPlacesLibrary({
+      place: {
+        place_id: "ChIJ-glamorgan",
+        formatted_address: "Royal Glamorgan Hospital, Llantrisant",
+        address_components: [
+          { long_name: "Llantrisant", types: ["locality", "political"] },
+          { long_name: "CF72 8XR", types: ["postal_code"] },
+        ],
+        geometry: {
+          location: { lat: () => 51.568, lng: () => -3.391 },
+        },
+      },
+    });
+
+    await expect(placeDetails("ChIJ-glamorgan")).resolves.toEqual({
+      placeId: "ChIJ-glamorgan",
+      address: "Royal Glamorgan Hospital, Llantrisant",
+      postcode: "CF72 8XR",
+      latitude: 51.568,
+      longitude: -3.391,
+    });
+  });
+
+  it("leaves postcode out when the place has no postal_code component", async () => {
+    mockPlacesLibrary({
+      place: {
+        place_id: "ChIJ-glamorgan",
+        formatted_address: "Royal Glamorgan Hospital, Llantrisant",
+        address_components: [
+          { long_name: "Llantrisant", types: ["locality", "political"] },
+        ],
+        geometry: {
+          location: { lat: () => 51.568, lng: () => -3.391 },
+        },
+      },
+    });
+
+    await expect(placeDetails("ChIJ-glamorgan")).resolves.not.toHaveProperty(
+      "postcode",
+    );
+  });
+
+  it("asks Google for address_components", async () => {
+    const { getDetails } = mockPlacesLibrary({
+      place: {
+        place_id: "ChIJ-glamorgan",
+        formatted_address: "Royal Glamorgan Hospital, Llantrisant",
+        geometry: {
+          location: { lat: () => 51.568, lng: () => -3.391 },
+        },
+      },
+    });
+
+    await placeDetails("ChIJ-glamorgan");
+
+    expect(getDetails).toHaveBeenCalledWith(
+      {
+        placeId: "ChIJ-glamorgan",
+        fields: expect.arrayContaining(["address_components"]),
+      },
+      expect.any(Function),
+    );
+  });
+});
+
+describe("cachedPlaceDetails", () => {
+  const place = {
+    place_id: "ChIJ-glamorgan",
+    formatted_address: "Royal Glamorgan Hospital, Llantrisant",
+    geometry: { location: { lat: () => 51.568, lng: () => -3.391 } },
+  };
+
+  it("fetches a place id once, even when asked twice at the same time", async () => {
+    const { getDetails } = mockPlacesLibrary({ place });
+
+    const [first, second] = await Promise.all([
+      cachedPlaceDetails("ChIJ-glamorgan"),
+      cachedPlaceDetails("ChIJ-glamorgan"),
+    ]);
+    await cachedPlaceDetails("ChIJ-glamorgan");
+
+    expect(first).toBe(second);
+    expect(getDetails).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetches each place id separately", async () => {
+    const { getDetails } = mockPlacesLibrary({ place });
+
+    await cachedPlaceDetails("ChIJ-glamorgan");
+    await cachedPlaceDetails("ChIJ-other");
+
+    expect(getDetails).toHaveBeenCalledTimes(2);
+  });
+
+  it("forgets a failed lookup so it can be retried", async () => {
+    const { getDetails } = mockPlacesLibrary({
+      place: null,
+      detailsStatus: "UNKNOWN_ERROR",
+    });
+
+    await expect(cachedPlaceDetails("ChIJ-glamorgan")).rejects.toThrow();
+    await expect(cachedPlaceDetails("ChIJ-glamorgan")).rejects.toThrow();
+
+    expect(getDetails).toHaveBeenCalledTimes(2);
   });
 });

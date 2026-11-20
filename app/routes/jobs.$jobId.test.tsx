@@ -517,4 +517,74 @@ describe("Job detail relay arrival times", () => {
     expect(first.previousElementSibling).toHaveTextContent("Handoff One");
     expect(second.previousElementSibling).toHaveTextContent("Handoff Two");
   });
+
+  describe("Job detail postcodes", () => {
+    const [baseJob] = mockActiveJobs;
+
+    it("shows each postcode after its address", async () => {
+      renderJobDetail({
+        active: [
+          {
+            ...baseJob,
+            collection: { ...baseJob.collection, postcode: "CF72 8XR" },
+            delivery: { ...baseJob.delivery, postcode: "CF14 4XW" },
+          },
+        ],
+      });
+
+      expect(
+        await screen.findByText(`${baseJob.collection.address}, CF72 8XR`),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(`${baseJob.delivery.address}, CF14 4XW`),
+      ).toBeInTheDocument();
+    });
+
+    it("does not repeat a postcode the address already contains", async () => {
+      const address = "University Hospital of Wales, Cardiff CF14 4XW, UK";
+      renderJobDetail({
+        active: [
+          {
+            ...baseJob,
+            delivery: { ...baseJob.delivery, address, postcode: "CF14 4XW" },
+          },
+        ],
+      });
+
+      expect(await screen.findByText(address)).toBeInTheDocument();
+    });
+
+    it("shows the postcodes of relay legs", async () => {
+      const parent: DeliveryJob = {
+        ...baseJob,
+        id: "relay-parent",
+        reference: "JB-2200",
+        isRelay: true,
+        allowedActions: ["cancel"],
+        legs: [
+          {
+            ...baseJob,
+            id: "leg-1",
+            reference: "JB-2200-L1",
+            legNumber: 1,
+            parentJobId: "relay-parent",
+            collection: {
+              ...baseJob.collection,
+              address: "Start",
+              postcode: "CF1 1AA",
+            },
+            delivery: {
+              ...baseJob.delivery,
+              address: "Handoff One CF2 2BB",
+              postcode: "CF2 2BB",
+            },
+          },
+        ],
+      };
+      renderJobDetail({ jobId: parent.id, active: [parent] });
+
+      expect(await screen.findByText("Start, CF1 1AA")).toBeInTheDocument();
+      expect(screen.getByText("Handoff One CF2 2BB")).toBeInTheDocument();
+    });
+  });
 });

@@ -6,9 +6,17 @@ import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import type { PlaceLocation } from "~/lib/jobs";
 import { googlePlacesLookup, type PlacesLookup } from "~/lib/places";
+import {
+  addressWithPostcode,
+  findUkPostcode,
+  postcodeToShow,
+} from "~/lib/postcode";
 import { mostUsedLocations, recentLocations } from "~/lib/saved-locations";
 
 const SUGGEST_DEBOUNCE_MS = 250;
+
+/** Google autocomplete has no postcode, so details are fetched for this many suggestions at most. */
+const SUGGESTION_POSTCODE_LIMIT = 5;
 
 const OPTION_BUTTON_CLASS =
   "flex min-h-11 w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-bb-gray-900 hover:bg-bb-gray-50 dark:text-bb-gray-100 dark:hover:bg-muted/50";
@@ -27,6 +35,27 @@ type PlaceLocationFieldProps = {
   error?: string;
   lookup?: PlacesLookup;
 };
+
+function OptionLabel({
+  text,
+  postcode,
+}: {
+  text: string;
+  postcode: string | null;
+}) {
+  if (!postcode) {
+    return text;
+  }
+
+  return (
+    <span className="flex flex-col">
+      <span>{text}</span>
+      <span className="text-xs font-normal text-bb-gray-500 dark:text-bb-gray-400">
+        {postcode}
+      </span>
+    </span>
+  );
+}
 
 function SavedLocationList({
   heading,
@@ -54,7 +83,10 @@ function SavedLocationList({
               className={OPTION_BUTTON_CLASS}
               onClick={() => onSelect(location)}
             >
-              {location.address}
+              <OptionLabel
+                text={location.address}
+                postcode={postcodeToShow(location.address, location.postcode)}
+              />
             </button>
           </li>
         ))}
@@ -78,6 +110,7 @@ export function PlaceLocationField({
   const [suggestions, setSuggestions] = useState<
     { placeId: string; description: string }[]
   >([]);
+  const [postcodes, setPostcodes] = useState<Record<string, string>>({});
   const [searchError, setSearchError] = useState<string | undefined>();
   const [resolving, setResolving] = useState(false);
 
@@ -113,13 +146,52 @@ export function PlaceLocationField({
     return () => window.clearTimeout(handle);
   }, [lookup, query, value]);
 
+  // Fill in the postcode for the visible suggestions whose text has none. The
+  // lookup caches details per place id, so each suggestion is fetched once.
+  useEffect(() => {
+    let cancelled = false;
+
+    for (const suggestion of suggestions.slice(0, SUGGESTION_POSTCODE_LIMIT)) {
+      if (findUkPostcode(suggestion.description)) {
+        continue;
+      }
+
+      void lookup
+        .details(suggestion.placeId)
+        .then((location) => {
+          const postcode = location.postcode?.trim();
+          if (cancelled || !postcode) {
+            return;
+          }
+
+          setPostcodes((current) =>
+            current[suggestion.placeId] === postcode
+              ? current
+              : { ...current, [suggestion.placeId]: postcode },
+          );
+        })
+        .catch(() => {
+          // The option simply shows no postcode; choosing it reports any error.
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lookup, suggestions]);
+
   async function selectSuggestion(placeId: string, description: string) {
     setResolving(true);
     setSearchError(undefined);
     try {
       const location = await lookup.details(placeId);
       // Keep the autocomplete label so hospitals show their name, not only the street.
-      onChange({ ...location, address: description });
+      const postcode = location.postcode?.trim() || findUkPostcode(description);
+      onChange({
+        ...location,
+        address: description,
+        ...(postcode ? { postcode } : {}),
+      });
       setQuery("");
       setSuggestions([]);
     } catch (caught: unknown) {
@@ -176,7 +248,7 @@ export function PlaceLocationField({
           <Input
             id={id}
             readOnly
-            value={value.address}
+            value={addressWithPostcode(value.address, value.postcode)}
             aria-invalid={!!error}
             className="h-11 flex-1 px-3 text-base dark:bg-input/30"
           />
@@ -242,7 +314,13 @@ export function PlaceLocationField({
                 )
               }
             >
-              {suggestion.description}
+              <OptionLabel
+                text={suggestion.description}
+                postcode={postcodeToShow(
+                  suggestion.description,
+                  postcodes[suggestion.placeId],
+                )}
+              />
             </button>
           ))}
           <p className="px-3 py-1.5 text-right text-xs text-bb-gray-500 dark:text-bb-gray-400">
