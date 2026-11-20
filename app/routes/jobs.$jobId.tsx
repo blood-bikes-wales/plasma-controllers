@@ -1,4 +1,4 @@
-import { ArrowLeft, Phone } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Phone } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { z } from "zod";
@@ -7,6 +7,7 @@ import { EstimatedTime } from "~/components/estimated-time";
 import { FieldError } from "~/components/field-error";
 import { JobLegsPanel } from "~/components/job-legs-panel";
 import { JobTypeLabel } from "~/components/job-type-label";
+import { MotherContactReminder } from "~/components/mother-contact-reminder";
 import { RelayJobForm } from "~/components/relay-job-form";
 import { SearchableSelectField } from "~/components/searchable-select-field";
 import { Badge } from "~/components/ui/badge";
@@ -29,14 +30,18 @@ import {
   fetchJobById,
   formatJobCreatedAt,
   formatJobDay,
+  formatScheduledCollection,
   fromDateTimeLocalValue,
   getJobDate,
   isRelayJob,
   type JobDeliveryRecord,
   type JobMother,
   jobErrorMessage,
+  needsMotherContact,
   performJobAction,
   relayJob,
+  scheduleJobCollection,
+  upcomingCollectionAt,
   waitingForLegMessage,
 } from "~/lib/jobs";
 import { addressWithPostcode } from "~/lib/postcode";
@@ -133,6 +138,24 @@ function MotherContact({ mother }: { mother: JobMother }) {
         ))}
       </div>
     </section>
+  );
+}
+
+/** "Collection arranged for Sat 29 Aug, 14:30", with an icon, once a time is set. */
+function ArrangedCollection({ scheduledAt }: { scheduledAt: string }) {
+  const label = formatScheduledCollection(scheduledAt);
+  if (!label) {
+    return null;
+  }
+
+  return (
+    <p
+      role="status"
+      className="flex items-center gap-2 rounded-bb-card bg-bb-white px-4 py-3 text-base font-semibold text-bb-gray-900 ring-1 ring-bb-gray-200 dark:bg-card dark:text-bb-gray-100 dark:ring-bb-gray-700"
+    >
+      <CalendarCheck className="size-5 shrink-0" aria-hidden="true" />
+      Collection arranged for {label}
+    </p>
   );
 }
 
@@ -625,6 +648,11 @@ export default function JobDetailPage() {
   // Normal jobs are collected and delivered on one fixed day, so only the time
   // is editable. Relay jobs (parent or leg) keep the date-and-time picker.
   const fixedJobDate = isRelayJob(job) ? null : getJobDate(job);
+  // The reminder is a controller's job: only roles that can manage jobs get it,
+  // and the API only sends the flag to them.
+  const showMotherReminder = canManage && needsMotherContact(job);
+  // Only an upcoming collection reads as "arranged"; later statuses say nothing.
+  const arrangedAt = upcomingCollectionAt(job);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -654,6 +682,18 @@ export default function JobDetailPage() {
         </Badge>
       </header>
 
+      {showMotherReminder ? (
+        <MotherContactReminder
+          onSave={async (scheduledCollectionAt) => {
+            setJob(await scheduleJobCollection(job.id, scheduledCollectionAt));
+          }}
+        >
+          {job.mother ? <MotherContact mother={job.mother} /> : null}
+        </MotherContactReminder>
+      ) : arrangedAt ? (
+        <ArrangedCollection scheduledAt={arrangedAt} />
+      ) : null}
+
       <Card className="rounded-bb-card border-0 bg-bb-white py-5 shadow-none ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700">
         <CardContent className="space-y-5">
           <div className="space-y-2">
@@ -666,7 +706,9 @@ export default function JobDetailPage() {
               {waitingForLeg}
             </p>
           ) : null}
-          {job.mother ? <MotherContact mother={job.mother} /> : null}
+          {job.mother && !showMotherReminder ? (
+            <MotherContact mother={job.mother} />
+          ) : null}
           <div className="space-y-1 text-sm text-bb-gray-600 dark:text-bb-gray-300">
             <p>
               <span className="font-medium text-bb-gray-900 dark:text-bb-gray-100">
