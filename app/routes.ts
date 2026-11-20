@@ -23,6 +23,7 @@ export default [
         index("routes/operations._index.tsx"),
         route("postcode-areas", "routes/operations.postcode-areas.tsx"),
         route("section-172", "routes/operations.section-172.tsx"),
+        route("job-contents", "routes/operations.job-contents.tsx"),
       ]),
       route("jobs", "routes/jobs.tsx", [
         route("new", "routes/jobs-new.tsx", [

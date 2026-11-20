@@ -15,6 +15,7 @@ import LoginPage from "~/routes/login";
 import NoAccessPage from "~/routes/no-access";
 import OperationsLayout from "~/routes/operations";
 import OperationsIndex from "~/routes/operations._index";
+import OperationsJobContentsPage from "~/routes/operations.job-contents";
 import OperationsPostcodeAreasPage from "~/routes/operations.postcode-areas";
 import OperationsSection172Page from "~/routes/operations.section-172";
 import ProtectedLayout from "~/routes/protected-layout";
@@ -53,6 +54,7 @@ export const appRoutes: RouteObject[] = [
                 Component: OperationsPostcodeAreasPage,
               },
               { path: "section-172", Component: OperationsSection172Page },
+              { path: "job-contents", Component: OperationsJobContentsPage },
             ],
           },
           {

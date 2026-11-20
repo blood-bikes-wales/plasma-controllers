@@ -21,6 +21,7 @@ const ALL_ROLES: readonly Role[] = [
 
 const MANAGE_BIKE_ROLES: readonly Role[] = [Role.Admin, Role.Trustee];
 const MANAGE_OPERATIONS_ROLES: readonly Role[] = [Role.Admin, Role.Trustee];
+const MANAGE_JOB_CONTENTS_ROLES: readonly Role[] = [Role.Admin, Role.Trustee];
 
 /**
  * Primary nav areas and which roles may see them.
@@ -43,6 +44,7 @@ export const NAV_AREAS: readonly NavArea[] = [
 export const OPERATIONS_CHILD_NAV: readonly ChildNavItem[] = [
   { to: "/operations/postcode-areas", label: "Postcode areas" },
   { to: "/operations/section-172", label: "Section 172" },
+  { to: "/operations/job-contents", label: "Job contents" },
 ];
 
 const CREATE_JOB_ROLES: readonly Role[] = [Role.Admin, Role.Controller];
@@ -61,6 +63,15 @@ export function canManagePostcodeAreas(role: Role | null): boolean {
   }
 
   return MANAGE_OPERATIONS_ROLES.includes(role);
+}
+
+/** Mirrors the API's `manage-job-contents` capability (trustee, admin implied). */
+export function canManageJobContents(role: Role | null): boolean {
+  if (!role) {
+    return false;
+  }
+
+  return MANAGE_JOB_CONTENTS_ROLES.includes(role);
 }
 
 export function canManageJobs(role: Role | null): boolean {

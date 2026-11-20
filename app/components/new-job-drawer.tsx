@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { FieldError } from "~/components/field-error";
 import { PlaceLocationField } from "~/components/place-location-field";
+import { SearchableSelectField } from "~/components/searchable-select-field";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
@@ -18,6 +19,12 @@ import {
 } from "~/components/ui/sheet";
 import { Switch } from "~/components/ui/switch";
 import { ApiError } from "~/lib/api-client";
+import {
+  fetchJobContents,
+  type JobContentOption,
+  NO_JOB_CONTENTS_MESSAGE,
+  selectableJobContents,
+} from "~/lib/job-contents";
 import {
   type CreateJobPayload,
   combineDayAndTime,
@@ -143,7 +150,7 @@ const newJobBaseSchema = z.object({
   deliveryNotes: z.string().trim().max(NOTES_MAX, NOTES_TOO_LONG),
   estimatedCollection: estimatedTimeSchema,
   estimatedDelivery: estimatedTimeSchema,
-  contents: z.string().trim().min(1, "Describe the item or contents"),
+  contents: z.string().trim().min(1, "Choose the contents"),
   serviceAreas: z.array(z.string()).min(1, "Choose at least one service area"),
   ...milkFieldsSchema.shape,
 });
@@ -230,6 +237,8 @@ type NewJobDrawerProps = {
   placesLookup?: PlacesLookup;
   createJob?: (payload: CreateJobPayload) => Promise<DeliveryJob>;
   serviceAreas?: ServiceAreaOption[];
+  /** The contents a controller can choose from. Fetched from the API when omitted. */
+  jobContents?: JobContentOption[];
   lookupPostcodeArea?: (postcode: string) => Promise<PostcodeAreaMatch | null>;
 };
 
@@ -601,6 +610,7 @@ export function NewJobDrawer({
   placesLookup,
   createJob = createDeliveryJob,
   serviceAreas: serviceAreasProp,
+  jobContents: jobContentsProp,
   lookupPostcodeArea = defaultLookupPostcodeArea,
 }: NewJobDrawerProps) {
   const [form, setForm] = useState<NewJobFormState>(EMPTY_FORM);
@@ -611,6 +621,13 @@ export function NewJobDrawer({
     serviceAreasProp ?? [],
   );
   const [areasError, setAreasError] = useState<string | undefined>();
+  // null until the list has loaded, so "No contents have been set up" never flashes.
+  const [jobContents, setJobContents] = useState<JobContentOption[] | null>(
+    jobContentsProp ? selectableJobContents(jobContentsProp) : null,
+  );
+  const [contentsError, setContentsError] = useState<string | undefined>();
+  // Bumped by "Try again" to re-run the fetch without touching the rest of the form.
+  const [contentsReload, setContentsReload] = useState(0);
   const [autoPicks, setAutoPicks] = useState<AutoPicks>(NO_AUTO_PICKS);
 
   // Automatic service-area ticks. These live in refs so a lookup that resolves
@@ -646,6 +663,7 @@ export function NewJobDrawer({
       setFormError(undefined);
       setSubmitting(false);
       setAreasError(undefined);
+      setContentsError(undefined);
     }
   }, [open]);
 
@@ -676,6 +694,37 @@ export function NewJobDrawer({
       cancelled = true;
     };
   }, [open, serviceAreasProp]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: contentsReload only exists to re-run this fetch ("Try again").
+  useEffect(() => {
+    if (jobContentsProp) {
+      setJobContents(selectableJobContents(jobContentsProp));
+      return;
+    }
+
+    if (!open) {
+      return;
+    }
+
+    // Reloaded each time the drawer opens so a trustee's changes show up.
+    let cancelled = false;
+    setContentsError(undefined);
+    void fetchJobContents()
+      .then((entries) => {
+        if (!cancelled) {
+          setJobContents(selectableJobContents(entries));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setContentsError("Unable to load the contents list.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, jobContentsProp, contentsReload]);
 
   function updateField<K extends keyof NewJobFormState>(
     field: K,
@@ -1079,25 +1128,42 @@ export function NewJobDrawer({
             </FormSection>
 
             <FormSection title="Contents">
-              <div className="space-y-2">
-                <Label
-                  htmlFor="contents"
-                  className="text-bb-gray-700 dark:text-bb-gray-300"
-                >
-                  Item or contents description
-                </Label>
-                <Input
-                  id="contents"
-                  value={form.contents}
-                  onChange={(event) =>
-                    updateField("contents", event.target.value)
-                  }
-                  aria-invalid={!!errors.contents}
-                  className="h-11 text-base dark:bg-input/30"
-                  placeholder="e.g. Blood samples, medical notes"
-                />
-                <FieldError message={errors.contents} />
-              </div>
+              <SearchableSelectField
+                id="contents"
+                label="Contents"
+                value={form.contents || null}
+                onChange={(value) => updateField("contents", value ?? "")}
+                options={(jobContents ?? []).map((entry) => ({
+                  value: entry.name,
+                  label: entry.name,
+                }))}
+                placeholder={
+                  jobContents === null && !contentsError
+                    ? "Loading…"
+                    : "Search or select the contents…"
+                }
+                error={errors.contents}
+                emptyMessage={
+                  jobContents !== null && !contentsError
+                    ? NO_JOB_CONTENTS_MESSAGE
+                    : undefined
+                }
+              />
+              {contentsError ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p role="alert" className="text-sm font-medium text-bb-error">
+                    {contentsError}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 rounded-bb-button px-4"
+                    onClick={() => setContentsReload((count) => count + 1)}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : null}
             </FormSection>
 
             <FormSection title="Service areas">

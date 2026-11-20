@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "~/lib/api-client";
+import { fetchJobContents } from "~/lib/job-contents";
 import type { CreateJobPayload, DeliveryJob, PlaceLocation } from "~/lib/jobs";
 import type { PlacesLookup } from "~/lib/places";
 import type { PostcodeAreaMatch } from "~/lib/postcode-areas";
@@ -10,8 +11,14 @@ import {
   recentLocations,
   SAVED_LOCATIONS_KEY,
 } from "~/lib/saved-locations";
+import { mockJobContents } from "../../tests/job-content-fixtures";
 import { mockServiceAreas } from "../../tests/service-area-fixtures";
 import { NewJobDrawer } from "./new-job-drawer";
+
+vi.mock("~/lib/job-contents", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/lib/job-contents")>()),
+  fetchJobContents: vi.fn(),
+}));
 
 const COLLECTION: PlaceLocation = {
   placeId: "ChIJ-collection",
@@ -63,6 +70,14 @@ function stubLookup(): PlacesLookup {
   };
 }
 
+async function chooseContents(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string,
+) {
+  await user.type(screen.getByLabelText("Contents"), name.slice(0, 4));
+  await user.click(await screen.findByRole("option", { name }));
+}
+
 async function fillRequiredFields(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("Caller name"), "Dr. Smith");
   await user.type(screen.getByLabelText("Contact number"), "029 2074 7747");
@@ -83,10 +98,7 @@ async function fillRequiredFields(user: ReturnType<typeof userEvent.setup>) {
   );
   await screen.findByDisplayValue(DELIVERY.address);
 
-  await user.type(
-    screen.getByLabelText("Item or contents description"),
-    "Blood samples",
-  );
+  await chooseContents(user, "Blood samples");
   await user.click(screen.getByRole("checkbox", { name: "East" }));
 }
 
@@ -99,6 +111,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -113,9 +126,7 @@ describe("NewJobDrawer", () => {
     expect(screen.getByLabelText(/organisation/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Collection location")).toBeInTheDocument();
     expect(screen.getByLabelText("Delivery location")).toBeInTheDocument();
-    expect(
-      screen.getByLabelText("Item or contents description"),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Contents")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "East" })).toBeInTheDocument();
     expect(
       screen.getByRole("checkbox", { name: "North West" }),
@@ -126,6 +137,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -145,6 +157,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={onOpenChange}
         placesLookup={stubLookup()}
@@ -163,6 +176,7 @@ describe("NewJobDrawer", () => {
     const { rerender } = render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={onOpenChange}
         placesLookup={stubLookup()}
@@ -173,6 +187,7 @@ describe("NewJobDrawer", () => {
     rerender(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open={false}
         onOpenChange={onOpenChange}
         placesLookup={stubLookup()}
@@ -181,6 +196,7 @@ describe("NewJobDrawer", () => {
     rerender(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={onOpenChange}
         placesLookup={stubLookup()}
@@ -194,6 +210,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open={false}
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -212,6 +229,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -230,9 +248,7 @@ describe("NewJobDrawer", () => {
     expect(
       screen.getByText("Choose a delivery location from the place search"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("Describe the item or contents"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Choose the contents")).toBeInTheDocument();
     expect(
       screen.getByText("Choose at least one service area"),
     ).toBeInTheDocument();
@@ -249,6 +265,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -277,6 +294,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -301,6 +319,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         onCreated={onCreated}
@@ -340,6 +359,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -370,6 +390,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -386,6 +407,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -409,6 +431,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -433,6 +456,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -458,6 +482,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -486,6 +511,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -525,6 +551,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -553,6 +580,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -578,6 +606,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -613,6 +642,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={stubLookup()}
@@ -650,6 +680,7 @@ describe("NewJobDrawer", () => {
     render(
       <NewJobDrawer
         serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
         open
         onOpenChange={() => {}}
         placesLookup={lookup}
@@ -669,10 +700,7 @@ describe("NewJobDrawer", () => {
       await screen.findByRole("option", { name: /University Hospital/ }),
     );
     await screen.findByDisplayValue(`${DELIVERY.address}, CF14 4XW`);
-    await user.type(
-      screen.getByLabelText("Item or contents description"),
-      "Blood samples",
-    );
+    await chooseContents(user, "Blood samples");
     await user.click(screen.getByRole("checkbox", { name: "East" }));
     await user.click(screen.getByRole("button", { name: "Create job" }));
 
@@ -798,6 +826,7 @@ describe("NewJobDrawer service areas from the places", () => {
   ) {
     const props = {
       serviceAreas: AREAS,
+      jobContents: mockJobContents,
       onOpenChange: () => {},
       placesLookup: placesLookup(),
       lookupPostcodeArea,
@@ -1121,6 +1150,7 @@ describe("NewJobDrawer service areas from the places", () => {
       render(
         <NewJobDrawer
           serviceAreas={mockServiceAreas}
+          jobContents={mockJobContents}
           open
           onOpenChange={() => {}}
           placesLookup={stubLookup()}
@@ -1520,6 +1550,7 @@ describe("NewJobDrawer service areas from the places", () => {
       const user = userEvent.setup();
       const props = {
         serviceAreas: mockServiceAreas,
+        jobContents: mockJobContents,
         onOpenChange: () => {},
         placesLookup: stubLookup(),
       };
@@ -1584,5 +1615,313 @@ describe("NewJobDrawer service areas from the places", () => {
         ),
       ).toBeInTheDocument();
     });
+  });
+});
+
+describe("NewJobDrawer contents", () => {
+  afterEach(() => {
+    vi.mocked(fetchJobContents).mockReset();
+  });
+
+  it("offers the managed entries in a searchable select, not a text box", async () => {
+    const user = userEvent.setup();
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    const field = screen.getByRole("combobox", { name: "Contents" });
+    await user.click(field);
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual(["Blood samples", "Milk", "Platelets"]);
+
+    await user.type(field, "plate");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    await user.click(screen.getByRole("option", { name: "Platelets" }));
+    expect(screen.getByLabelText("Contents")).toHaveValue("Platelets");
+  });
+
+  it("sends the chosen entry's name as the contents", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn().mockResolvedValue(CREATED_JOB);
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    // The contents field comes after the two places, which have their own Change buttons.
+    const changeButtons = screen.getAllByRole("button", { name: "Change" });
+    await user.click(changeButtons[changeButtons.length - 1]);
+    await user.type(screen.getByLabelText("Contents"), "Milk");
+    await user.click(await screen.findByRole("option", { name: "Milk" }));
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    await waitFor(() => expect(createJob).toHaveBeenCalledOnce());
+    expect(createJob).toHaveBeenCalledWith(
+      expect.objectContaining({ contents: "Milk" }),
+    );
+  });
+
+  it("blocks submit until contents are chosen", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn();
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    expect(createJob).not.toHaveBeenCalled();
+    expect(screen.getByText("Choose the contents")).toBeInTheDocument();
+    expect(screen.getByLabelText("Contents")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+  });
+
+  it("shows the empty message and no input when there are no contents", () => {
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        jobContents={[]}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        "No contents have been set up. Ask a trustee to add some.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Contents")).toBeDisabled();
+  });
+
+  it("loads the list from the API when it is not passed in", async () => {
+    vi.mocked(fetchJobContents).mockResolvedValue([
+      { id: "content-1", name: "Blood samples" },
+    ]);
+    const user = userEvent.setup();
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    // No "nothing set up" flash while the list is still loading.
+    expect(
+      screen.queryByText(/No contents have been set up/),
+    ).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Contents")).toBeEnabled();
+    });
+    await user.click(screen.getByLabelText("Contents"));
+    expect(
+      await screen.findByRole("option", { name: "Blood samples" }),
+    ).toBeInTheDocument();
+    expect(fetchJobContents).toHaveBeenCalledOnce();
+  });
+
+  it("shows an error when the list cannot be loaded", async () => {
+    vi.mocked(fetchJobContents).mockRejectedValue(new Error("boom"));
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    expect(
+      await screen.findByText("Unable to load the contents list."),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/No contents have been set up/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the API's message when the chosen contents are rejected", async () => {
+    const user = userEvent.setup();
+    const createJob = vi.fn().mockRejectedValue(
+      new ApiError(422, "Choose the contents from the list.", {
+        body: {
+          message: "Choose the contents from the list.",
+          errors: { contents: ["Choose the contents from the list."] },
+        },
+      }),
+    );
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        jobContents={mockJobContents}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+        createJob={createJob}
+      />,
+    );
+
+    await fillRequiredFields(user);
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    expect(
+      await screen.findByText("Choose the contents from the list."),
+    ).toBeInTheDocument();
+  });
+
+  it("does not offer retired entries that a manager is sent (prop)", async () => {
+    const user = userEvent.setup();
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        jobContents={[
+          { id: "c1", name: "Blood samples", active: true, sortOrder: 1 },
+          { id: "c2", name: "Retired thing", active: false, sortOrder: 2 },
+        ]}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("Contents"));
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual(["Blood samples"]);
+    await user.type(screen.getByLabelText("Contents"), "Retired");
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+  });
+
+  it("does not offer retired entries that a manager is sent (fetched)", async () => {
+    vi.mocked(fetchJobContents).mockResolvedValue([
+      { id: "c1", name: "Blood samples", active: true, sortOrder: 1 },
+      { id: "c2", name: "Retired thing", active: false, sortOrder: 2 },
+    ]);
+    const user = userEvent.setup();
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Contents")).toBeEnabled();
+    });
+    await user.click(screen.getByLabelText("Contents"));
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual(["Blood samples"]);
+  });
+
+  it("shows the empty message when every entry is retired", async () => {
+    vi.mocked(fetchJobContents).mockResolvedValue([
+      { id: "c1", name: "Retired thing", active: false, sortOrder: 1 },
+    ]);
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        "No contents have been set up. Ask a trustee to add some.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Contents")).toBeDisabled();
+  });
+
+  it("shows a Loading placeholder until the list arrives", async () => {
+    let resolve: (entries: { id: string; name: string }[]) => void = () => {};
+    vi.mocked(fetchJobContents).mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    expect(screen.getByPlaceholderText("Loading…")).toBeInTheDocument();
+
+    resolve([{ id: "c1", name: "Blood samples" }]);
+    expect(
+      await screen.findByPlaceholderText("Search or select the contents…"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the load error visible on submit and retries without resetting the form", async () => {
+    vi.mocked(fetchJobContents)
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce([{ id: "c1", name: "Blood samples" }]);
+    const user = userEvent.setup();
+    render(
+      <NewJobDrawer
+        serviceAreas={mockServiceAreas}
+        open
+        onOpenChange={() => {}}
+        placesLookup={stubLookup()}
+      />,
+    );
+
+    expect(
+      await screen.findByText("Unable to load the contents list."),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Caller name"), "Dr. Smith");
+    await user.click(screen.getByRole("button", { name: "Create job" }));
+
+    // Both messages show: the load error is not replaced by the field error.
+    expect(screen.getByText("Choose the contents")).toBeInTheDocument();
+    expect(
+      screen.getByText("Unable to load the contents list."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Contents")).toBeEnabled();
+    });
+    expect(
+      screen.queryByText("Unable to load the contents list."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Caller name")).toHaveValue("Dr. Smith");
+    expect(fetchJobContents).toHaveBeenCalledTimes(2);
   });
 });
