@@ -2,10 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "~/lib/api-client";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
 import {
+  combineDayAndTime,
   createDeliveryJob,
+  type DeliveryJob,
   displayJobReference,
   fetchJobs,
   formatJobCreatedAt,
+  getJobDate,
+  isRelayJob,
   jobErrorMessage,
 } from "~/lib/jobs";
 
@@ -139,5 +143,48 @@ describe("jobErrorMessage", () => {
     expect(jobErrorMessage({}, "Could not create the job. Try again.")).toBe(
       "Could not create the job. Try again.",
     );
+  });
+});
+
+describe("isRelayJob", () => {
+  it("treats a relay parent and a relay leg as relay, anything else as normal", () => {
+    expect(isRelayJob({})).toBe(false);
+    expect(isRelayJob({ isRelay: false, parentJobId: null, legs: [] })).toBe(
+      false,
+    );
+    expect(isRelayJob({ isRelay: true })).toBe(true);
+    expect(isRelayJob({ legs: [{} as DeliveryJob] })).toBe(true);
+    expect(isRelayJob({ parentJobId: "parent-1" })).toBe(true);
+    expect(isRelayJob({ legNumber: 1 })).toBe(true);
+  });
+});
+
+describe("combineDayAndTime", () => {
+  it("combines the local day of a timestamp with a HH:mm time", () => {
+    const iso = combineDayAndTime("2026-03-10T09:00:00", "14:30");
+    const date = new Date(iso ?? "");
+    expect([
+      date.getFullYear(),
+      date.getMonth() + 1,
+      date.getDate(),
+      date.getHours(),
+      date.getMinutes(),
+    ]).toEqual([2026, 3, 10, 14, 30]);
+  });
+
+  it("returns undefined for a missing day or an invalid time", () => {
+    expect(combineDayAndTime(null, "14:30")).toBeUndefined();
+    expect(combineDayAndTime("not-a-date", "14:30")).toBeUndefined();
+    expect(combineDayAndTime("2026-03-10T09:00:00", "")).toBeUndefined();
+    expect(combineDayAndTime("2026-03-10T09:00:00", "25:00")).toBeUndefined();
+  });
+});
+
+describe("getJobDate", () => {
+  it("uses the created date", () => {
+    expect(getJobDate({ createdAt: "2026-03-10T09:00:00" })).toBe(
+      "2026-03-10T09:00:00",
+    );
+    expect(getJobDate({ createdAt: null })).toBeNull();
   });
 });

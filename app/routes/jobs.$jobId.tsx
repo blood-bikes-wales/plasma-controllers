@@ -18,12 +18,17 @@ import { canManageJobs } from "~/lib/capabilities";
 import {
   allowedActionsForJob,
   cancelJob,
+  combineDayAndTime,
   type DeliveryJob,
   defaultDateTimeLocalValue,
+  defaultTimeValue,
   displayJobReference,
   fetchJobById,
   formatJobCreatedAt,
+  formatJobDay,
   fromDateTimeLocalValue,
+  getJobDate,
+  isRelayJob,
   jobErrorMessage,
   performJobAction,
   relayJob,
@@ -140,10 +145,69 @@ function AllocateJobForm({
   );
 }
 
+/**
+ * Time of a collection/delivery. With a `jobDate` (normal job) only the time is
+ * editable and the day is fixed; without one (relay jobs) the controller picks
+ * both the date and the time.
+ */
+function RecordedAtField({
+  id,
+  label,
+  jobDate,
+  value,
+  onChange,
+  error,
+}: {
+  id: string;
+  label: string;
+  jobDate: string | null;
+  value: string;
+  onChange: (value: string) => void;
+  error?: string;
+}) {
+  const dayLabel = formatJobDay(jobDate);
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type={jobDate ? "time" : "datetime-local"}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-describedby={jobDate && dayLabel ? `${id}-day` : undefined}
+      />
+      {jobDate && dayLabel ? (
+        <p
+          id={`${id}-day`}
+          className="text-sm text-bb-gray-500 dark:text-bb-gray-400"
+        >
+          On {dayLabel} (the job's day)
+        </p>
+      ) : null}
+      <FieldError message={error} />
+    </div>
+  );
+}
+
+/** Initial value for a RecordedAtField: now, as a time or a date-time. */
+function defaultRecordedAt(jobDate: string | null) {
+  return jobDate ? defaultTimeValue() : defaultDateTimeLocalValue();
+}
+
+/** ISO timestamp to send for a RecordedAtField value. */
+function recordedAtToIso(jobDate: string | null, value: string) {
+  return jobDate
+    ? combineDayAndTime(jobDate, value)
+    : fromDateTimeLocalValue(value);
+}
+
 function CollectJobForm({
+  jobDate,
   isSubmitting,
   onSubmit,
 }: {
+  jobDate: string | null;
   isSubmitting: boolean;
   onSubmit: (payload: {
     contentsConfirmed: boolean;
@@ -155,7 +219,9 @@ function CollectJobForm({
     null,
   );
   const [receiptNumber, setReceiptNumber] = useState("");
-  const [collectedAt, setCollectedAt] = useState(defaultDateTimeLocalValue());
+  const [collectedAt, setCollectedAt] = useState(() =>
+    defaultRecordedAt(jobDate),
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -174,10 +240,16 @@ function CollectJobForm({
       return;
     }
 
+    const collectedIso = recordedAtToIso(jobDate, parsed.data.collectedAt);
+    if (!collectedIso) {
+      setErrors({ collectedAt: "Enter a valid collection time" });
+      return;
+    }
+
     await onSubmit({
       contentsConfirmed: parsed.data.contentsConfirmed === "yes",
       receiptNumber: parsed.data.receiptNumber,
-      collectedAt: fromDateTimeLocalValue(parsed.data.collectedAt) ?? "",
+      collectedAt: collectedIso,
     });
   }
 
@@ -206,16 +278,14 @@ function CollectJobForm({
         <FieldError message={errors.receiptNumber} />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="collected-at">Collection time</Label>
-        <Input
-          id="collected-at"
-          type="datetime-local"
-          value={collectedAt}
-          onChange={(event) => setCollectedAt(event.target.value)}
-        />
-        <FieldError message={errors.collectedAt} />
-      </div>
+      <RecordedAtField
+        id="collected-at"
+        label="Collection time"
+        jobDate={jobDate}
+        value={collectedAt}
+        onChange={setCollectedAt}
+        error={errors.collectedAt}
+      />
 
       <Button type="submit" disabled={isSubmitting}>
         Record collection
@@ -225,9 +295,11 @@ function CollectJobForm({
 }
 
 function DeliverJobForm({
+  jobDate,
   isSubmitting,
   onSubmit,
 }: {
+  jobDate: string | null;
   isSubmitting: boolean;
   onSubmit: (payload: {
     recipient: string;
@@ -235,7 +307,9 @@ function DeliverJobForm({
   }) => Promise<void>;
 }) {
   const [recipient, setRecipient] = useState("");
-  const [deliveredAt, setDeliveredAt] = useState(defaultDateTimeLocalValue());
+  const [deliveredAt, setDeliveredAt] = useState(() =>
+    defaultRecordedAt(jobDate),
+  );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -249,9 +323,15 @@ function DeliverJobForm({
       return;
     }
 
+    const deliveredIso = recordedAtToIso(jobDate, parsed.data.deliveredAt);
+    if (!deliveredIso) {
+      setErrors({ deliveredAt: "Enter a valid delivery time" });
+      return;
+    }
+
     await onSubmit({
       recipient: parsed.data.recipient,
-      deliveredAt: fromDateTimeLocalValue(parsed.data.deliveredAt) ?? "",
+      deliveredAt: deliveredIso,
     });
   }
 
@@ -267,16 +347,14 @@ function DeliverJobForm({
         <FieldError message={errors.recipient} />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="delivered-at">Delivery time</Label>
-        <Input
-          id="delivered-at"
-          type="datetime-local"
-          value={deliveredAt}
-          onChange={(event) => setDeliveredAt(event.target.value)}
-        />
-        <FieldError message={errors.deliveredAt} />
-      </div>
+      <RecordedAtField
+        id="delivered-at"
+        label="Delivery time"
+        jobDate={jobDate}
+        value={deliveredAt}
+        onChange={setDeliveredAt}
+        error={errors.deliveredAt}
+      />
 
       <Button type="submit" disabled={isSubmitting}>
         Record delivery
@@ -416,6 +494,9 @@ export default function JobDetailPage() {
   const allowed = allowedActionsForJob(job);
   const reference = displayJobReference(job);
   const createdLabel = formatJobCreatedAt(job.createdAt);
+  // Normal jobs are collected and delivered on one fixed day, so only the time
+  // is editable. Relay jobs (parent or leg) keep the date-and-time picker.
+  const fixedJobDate = isRelayJob(job) ? null : getJobDate(job);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -540,6 +621,7 @@ export default function JobDetailPage() {
             Record collection
           </h2>
           <CollectJobForm
+            jobDate={fixedJobDate}
             isSubmitting={isSubmitting}
             onSubmit={(payload) =>
               runAction(() => performJobAction(job.id, "collect", payload))
@@ -557,6 +639,7 @@ export default function JobDetailPage() {
             Record delivery
           </h2>
           <DeliverJobForm
+            jobDate={fixedJobDate}
             isSubmitting={isSubmitting}
             onSubmit={(payload) =>
               runAction(() => performJobAction(job.id, "deliver", payload))

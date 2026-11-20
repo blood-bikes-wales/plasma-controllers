@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   createMemoryRouter,
@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearActiveRole, setActiveRole } from "~/lib/active-role";
 import { AuthProvider } from "~/lib/auth";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
+import type { DeliveryJob } from "~/lib/jobs";
 import { Role } from "~/lib/roles";
 import { mockAuthUser } from "../../tests/auth-fixtures";
 import { mockActiveJobs, stubJobsFetch } from "../../tests/job-fixtures";
@@ -31,14 +32,16 @@ function withAuthProvider(routes: RouteObject[]): RouteObject[] {
 function renderJobDetail({
   jobId = mockActiveJobs[0].id,
   roles = [Role.Controller],
+  active,
 }: {
   jobId?: string;
   roles?: Role[];
+  active?: DeliveryJob[];
 } = {}) {
   const user = { ...mockAuthUser, roles };
   setAuthToken("test-google-id-token");
   setActiveRole(roles[0]);
-  const fetchStub = vi.fn(stubJobsFetch(user));
+  const fetchStub = vi.fn(stubJobsFetch(user, active ? { active } : {}));
   vi.stubGlobal("fetch", fetchStub);
 
   const router = createMemoryRouter(withAuthProvider(appRoutes), {
@@ -205,5 +208,134 @@ describe("Record collection fields", () => {
     });
     expect(body).not.toHaveProperty("suitablySealed");
     expect(body).not.toHaveProperty("sealNumber");
+  });
+});
+
+describe("Record collection and delivery time only", () => {
+  // Local time (no "Z") so the job's calendar day is the same in any timezone.
+  const createdAt = "2026-03-10T09:00:00";
+  const base = mockActiveJobs[1];
+  const allocated: DeliveryJob = { ...base, createdAt };
+  const collected: DeliveryJob = {
+    ...base,
+    id: "33333333-3333-3333-3333-333333333333",
+    status: "Collected",
+    createdAt,
+    allowedActions: ["deliver", "cancel"],
+  };
+  const relayLeg: DeliveryJob = {
+    ...base,
+    id: "44444444-4444-4444-4444-444444444444",
+    reference: "JB-2000-L1",
+    createdAt,
+    parentJobId: "55555555-5555-5555-5555-555555555555",
+    legNumber: 1,
+  };
+  const relayParent: DeliveryJob = {
+    ...base,
+    id: "55555555-5555-5555-5555-555555555555",
+    reference: "JB-2000",
+    createdAt,
+    isRelay: true,
+    legs: [relayLeg],
+  };
+
+  function requestBody(
+    fetchStub: ReturnType<typeof renderJobDetail>["fetchStub"],
+    action: string,
+  ) {
+    const call = fetchStub.mock.calls.find(([input]) =>
+      String(input instanceof Request ? input.url : input).includes(
+        `/actions/${action}`,
+      ),
+    );
+    expect(call).toBeDefined();
+    return JSON.parse(String(call?.[1]?.body));
+  }
+
+  function localDay(iso: string) {
+    const date = new Date(iso);
+    return [date.getFullYear(), date.getMonth() + 1, date.getDate()];
+  }
+
+  async function fillCollection(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByLabelText("Contents confirmed"));
+    await user.click(await screen.findByRole("option", { name: "Yes" }));
+    await user.type(screen.getByLabelText("Job number"), "JN-3001");
+  }
+
+  it("shows a time input and no date input when recording collection", async () => {
+    renderJobDetail({ jobId: allocated.id, active: [allocated] });
+
+    const input = await screen.findByLabelText("Collection time");
+    expect(input).toHaveAttribute("type", "time");
+    expect((input as HTMLInputElement).value).toMatch(/^\d{2}:\d{2}$/);
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+  });
+
+  it("sends a collection timestamp on the job's created day", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({
+      jobId: allocated.id,
+      active: [allocated],
+    });
+
+    await fillCollection(user);
+    fireEvent.change(screen.getByLabelText("Collection time"), {
+      target: { value: "14:30" },
+    });
+    await user.click(screen.getByRole("button", { name: "Record collection" }));
+
+    expect(await screen.findByText("Collected · job JN-3001")).toBeVisible();
+    const { collectedAt } = requestBody(fetchStub, "collect");
+    expect(localDay(collectedAt)).toEqual([2026, 3, 10]);
+    const sent = new Date(collectedAt);
+    expect([sent.getHours(), sent.getMinutes()]).toEqual([14, 30]);
+  });
+
+  it("shows a time input and sends a delivery timestamp on the job's created day", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({
+      jobId: collected.id,
+      active: [collected],
+    });
+
+    const input = await screen.findByLabelText("Delivery time");
+    expect(input).toHaveAttribute("type", "time");
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(document.querySelector('input[type="date"]')).toBeNull();
+
+    await user.type(screen.getByLabelText("Recipient"), "Sister Jones");
+    fireEvent.change(input, { target: { value: "16:45" } });
+    await user.click(screen.getByRole("button", { name: "Record delivery" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Delivered to Sister Jones")).toBeVisible();
+    });
+    const { deliveredAt } = requestBody(fetchStub, "deliver");
+    expect(localDay(deliveredAt)).toEqual([2026, 3, 10]);
+    const sent = new Date(deliveredAt);
+    expect([sent.getHours(), sent.getMinutes()]).toEqual([16, 45]);
+  });
+
+  it("keeps the date-and-time picker for a leg of a relay", async () => {
+    renderJobDetail({
+      jobId: relayLeg.id,
+      active: [relayParent],
+    });
+
+    const input = await screen.findByLabelText("Collection time");
+    expect(input).toHaveAttribute("type", "datetime-local");
+  });
+
+  it("keeps the date-and-time picker for a relay parent", async () => {
+    renderJobDetail({
+      jobId: relayParent.id,
+      active: [relayParent],
+    });
+
+    const input = await screen.findByLabelText("Collection time");
+    expect(input).toHaveAttribute("type", "datetime-local");
   });
 });
