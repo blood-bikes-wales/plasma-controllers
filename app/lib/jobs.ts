@@ -194,26 +194,20 @@ export async function fetchJobs(scope: JobListScope): Promise<DeliveryJob[]> {
   return body.data;
 }
 
+/**
+ * One job (or relay leg) by id from GET /jobs/{id}. The API never age-filters
+ * this, so an old completed job still opens. Null when there is no such job.
+ */
 export async function fetchJobById(jobId: string): Promise<DeliveryJob | null> {
-  const [active, completed] = await Promise.all([
-    fetchJobs("active"),
-    fetchJobs("completed"),
-  ]);
-
-  const combined = [...active, ...completed];
-  const direct = combined.find((candidate) => candidate.id === jobId);
-  if (direct) {
-    return direct;
-  }
-
-  for (const parent of combined) {
-    const leg = parent.legs?.find((candidate) => candidate.id === jobId);
-    if (leg) {
-      return leg;
+  try {
+    return await apiFetch<DeliveryJob>(`/jobs/${encodeURIComponent(jobId)}`);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
     }
-  }
 
-  return null;
+    throw error;
+  }
 }
 
 export async function performJobAction(

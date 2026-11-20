@@ -7,6 +7,7 @@ import {
   createDeliveryJob,
   type DeliveryJob,
   displayJobReference,
+  fetchJobById,
   fetchJobs,
   formatEstimatedTime,
   formatJobCreatedAt,
@@ -109,6 +110,42 @@ describe("fetchJobs", () => {
 
     const call = fetchMock.mock.calls[0];
     expect(String(call?.[0])).toMatch(/\/jobs\/active$/);
+  });
+});
+
+describe("fetchJobById", () => {
+  function stubFetch(status: number, body: unknown) {
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setAuthToken("test-token");
+    return fetchMock;
+  }
+
+  it("loads one job from GET /jobs/{id} instead of searching the lists", async () => {
+    const fetchMock = stubFetch(200, CREATED_JOB);
+
+    await expect(fetchJobById("job-1")).resolves.toEqual(CREATED_JOB);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/jobs\/job-1$/);
+  });
+
+  it("is null when the API has no such job", async () => {
+    stubFetch(404, { message: "No query results for model." });
+
+    await expect(fetchJobById("missing")).resolves.toBeNull();
+  });
+
+  it("still throws on other failures", async () => {
+    stubFetch(500, { message: "Server error" });
+
+    await expect(fetchJobById("job-1")).rejects.toBeInstanceOf(ApiError);
   });
 });
 

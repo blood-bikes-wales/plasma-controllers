@@ -11,6 +11,8 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
+import { Switch } from "~/components/ui/switch";
 import { useAuth } from "~/lib/auth";
 import { canCreateJobs } from "~/lib/capabilities";
 import {
@@ -81,9 +83,15 @@ function jobsForTab(
   return active;
 }
 
-function emptyMessage(tab: FilterTab, hasSourceJobs: boolean) {
+function emptyMessage(
+  tab: FilterTab,
+  hasSourceJobs: boolean,
+  showAllCompleted: boolean,
+) {
   if (tab === "Completed" && !hasSourceJobs) {
-    return "No completed jobs.";
+    return showAllCompleted
+      ? "No completed jobs."
+      : "No jobs completed in the last 24 hours.";
   }
 
   if (tab === "Completed") {
@@ -310,7 +318,7 @@ export function meta(_args: Route.MetaArgs) {
 export default function JobsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { status, activeRole } = useAuth();
+  const { status, activeRole, user, setShowCompletedJobs } = useAuth();
   const canCreate = canCreateJobs(activeRole);
   const isNewJobOpen = location.pathname === "/jobs/new" && canCreate;
   const isAssignOpen = location.pathname === "/jobs/new/assign";
@@ -324,6 +332,13 @@ export default function JobsPage() {
   const [completedJobs, setCompletedJobs] = useState<DeliveryJob[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The saved choice is the signed-in user's (GET /me); this only holds the
+  // value the user just picked while it is being saved, so the switch moves at
+  // once and goes back on its own if the save fails.
+  const [pendingShowAll, setPendingShowAll] = useState<boolean | null>(null);
+  const [settingError, setSettingError] = useState<string | null>(null);
+  const showAllCompleted =
+    pendingShowAll ?? user?.settings.showCompletedJobs ?? false;
 
   const load = useCallback(async () => {
     const [nextActive, nextCompleted] = await Promise.all([
@@ -374,6 +389,32 @@ export default function JobsPage() {
     }
     navigate("/jobs", { replace: true });
   }, [canCreate, location.pathname, navigate, status]);
+
+  async function handleShowAllCompletedChange(next: boolean) {
+    setSettingError(null);
+    setPendingShowAll(next);
+    try {
+      await setShowCompletedJobs(next);
+    } catch (caught: unknown) {
+      setSettingError(jobErrorMessage(caught, "Unable to save this setting."));
+      setPendingShowAll(null);
+      return;
+    }
+
+    try {
+      // The API applies the 24 hour rule from the saved setting, so ask it again.
+      setCompletedJobs(await fetchJobs("completed"));
+    } catch (caught: unknown) {
+      setSettingError(
+        jobErrorMessage(
+          caught,
+          "Saved, but unable to refresh the completed jobs.",
+        ),
+      );
+    } finally {
+      setPendingShowAll(null);
+    }
+  }
 
   function handleNewJobOpenChange(open: boolean) {
     if (!open) {
@@ -464,11 +505,47 @@ export default function JobsPage() {
           })}
         </div>
 
+        {activeTab === "Completed" ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4 rounded-bb-card bg-bb-white px-4 py-3 ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700">
+              <div className="space-y-0.5">
+                <Label
+                  htmlFor="show-all-completed-jobs"
+                  className="text-bb-gray-700 dark:text-bb-gray-300"
+                >
+                  Show all previous jobs
+                </Label>
+                <p className="text-sm text-bb-gray-500 dark:text-bb-gray-400">
+                  Completed jobs are hidden after 24 hours. This is saved for
+                  you only.
+                </p>
+              </div>
+              <Switch
+                id="show-all-completed-jobs"
+                checked={showAllCompleted}
+                disabled={pendingShowAll !== null}
+                onCheckedChange={(checked) =>
+                  void handleShowAllCompletedChange(checked)
+                }
+              />
+            </div>
+            {settingError ? (
+              <p role="alert" className="text-sm font-medium text-bb-error">
+                {settingError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <JobsBoard
           isLoading={isLoading}
           error={error}
           jobs={visibleJobs}
-          emptyMessage={emptyMessage(activeTab, sourceJobs.length > 0)}
+          emptyMessage={emptyMessage(
+            activeTab,
+            sourceJobs.length > 0,
+            showAllCompleted,
+          )}
           sectionLabel={sectionLabel(activeTab)}
           actionLabel={actionLabel(activeTab)}
         />

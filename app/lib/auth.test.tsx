@@ -17,12 +17,19 @@ afterEach(() => {
 });
 
 function AuthProbe() {
-  const { user, status, loginWithCredential, logout } = useAuth();
+  const { user, status, loginWithCredential, logout, setShowCompletedJobs } =
+    useAuth();
 
   return (
     <div>
       <span data-testid="status">{status}</span>
       <span data-testid="name">{user?.name ?? ""}</span>
+      <span data-testid="show-completed">
+        {String(user?.settings.showCompletedJobs)}
+      </span>
+      <button type="button" onClick={() => void setShowCompletedJobs(true)}>
+        Show all
+      </button>
       <button
         type="button"
         onClick={() => void loginWithCredential("fresh-id-token")}
@@ -155,5 +162,78 @@ describe("AuthProvider", () => {
     });
     expect(screen.getByTestId("name")).toHaveTextContent(mockAuthUser.name);
     expect(getAuthToken()).toBe("stored-google-id-token");
+  });
+
+  it("exposes the saved settings from GET /me", async () => {
+    setAuthToken("stored-google-id-token");
+    vi.stubGlobal(
+      "fetch",
+      stubAuthenticatedFetch({
+        ...mockAuthUser,
+        settings: { showCompletedJobs: true },
+      }),
+    );
+
+    renderAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("show-completed")).toHaveTextContent("true");
+    });
+  });
+
+  it("falls back to the defaults when an older API sends no settings", async () => {
+    setAuthToken("stored-google-id-token");
+    const { settings: _settings, ...olderResponse } = mockAuthUser;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return new Response(JSON.stringify(olderResponse), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    renderAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("status")).toHaveTextContent("authenticated");
+    });
+    expect(screen.getByTestId("name")).toHaveTextContent(mockAuthUser.name);
+    expect(screen.getByTestId("show-completed")).toHaveTextContent("false");
+  });
+
+  it("updates the user's settings once PATCH /me has saved them", async () => {
+    setAuthToken("stored-google-id-token");
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const settings = {
+          showCompletedJobs: init?.method === "PATCH",
+        };
+        return new Response(JSON.stringify({ ...mockAuthUser, settings }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderAuth();
+    await waitFor(() => {
+      expect(screen.getByTestId("show-completed")).toHaveTextContent("false");
+    });
+
+    screen.getByRole("button", { name: "Show all" }).click();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("show-completed")).toHaveTextContent("true");
+    });
+    const patch = fetchMock.mock.calls.find(
+      (call) => call[1]?.method === "PATCH",
+    );
+    expect(String(patch?.[0])).toMatch(/\/me$/);
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({
+      showCompletedJobs: true,
+    });
   });
 });

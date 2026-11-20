@@ -12,6 +12,7 @@ export const mockAuthUser: AuthUser = {
   google_id: "google-123",
   email_verified_at: "2026-01-01T00:00:00.000000Z",
   roles: [Role.Controller],
+  settings: { showCompletedJobs: false },
 };
 
 export function stubAuthenticatedFetch(user: AuthUser = mockAuthUser) {

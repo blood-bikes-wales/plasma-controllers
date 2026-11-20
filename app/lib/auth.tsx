@@ -17,6 +17,11 @@ import { ApiError, apiFetch, UNAUTHORIZED_EVENT } from "~/lib/api-client";
 import { clearAuthToken, getAuthToken, setAuthToken } from "~/lib/auth-token";
 import { postAuthPath } from "~/lib/capabilities";
 import { parseRoles, type Role } from "~/lib/roles";
+import {
+  parseUserSettings,
+  saveShowCompletedJobs,
+  type UserSettings,
+} from "~/lib/user-settings";
 
 export type AuthUser = {
   id: number;
@@ -25,6 +30,8 @@ export type AuthUser = {
   google_id: string | null;
   email_verified_at: string | null;
   roles: Role[];
+  /** Always set: defaults when the API sends none (older API, or nothing saved yet). */
+  settings: UserSettings;
 };
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -37,23 +44,31 @@ type AuthContextValue = {
   loginWithCredential: (idToken: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  /**
+   * Saves the preference through PATCH /me and, once the API has accepted it,
+   * updates `user.settings`. Rejects (leaving `user` untouched) when the save fails.
+   */
+  setShowCompletedJobs: (show: boolean) => Promise<void>;
   setActiveRole: (role: Role) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 async function fetchMe(token?: string): Promise<AuthUser> {
-  const user = await apiFetch<Omit<AuthUser, "roles"> & { roles?: string[] }>(
-    "/me",
-    {
-      token,
-      // During login we pass the Google ID token explicitly before it is stored.
-    },
-  );
+  const user = await apiFetch<
+    Omit<AuthUser, "roles" | "settings"> & {
+      roles?: string[];
+      settings?: unknown;
+    }
+  >("/me", {
+    token,
+    // During login we pass the Google ID token explicitly before it is stored.
+  });
 
   return {
     ...user,
     roles: parseRoles(user.roles),
+    settings: parseUserSettings(user.settings),
   };
 }
 
@@ -165,6 +180,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [user],
   );
 
+  const setShowCompletedJobs = useCallback(async (show: boolean) => {
+    const settings = await saveShowCompletedJobs(show);
+    setUser((current) => (current ? { ...current, settings } : current));
+  }, []);
+
   const destination = useMemo(
     () => postAuthPath(user?.roles ?? [], activeRole),
     [user, activeRole],
@@ -179,6 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginWithCredential,
       logout,
       refreshUser,
+      setShowCompletedJobs,
       setActiveRole,
     }),
     [
@@ -189,6 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginWithCredential,
       logout,
       refreshUser,
+      setShowCompletedJobs,
       setActiveRole,
     ],
   );
