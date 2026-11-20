@@ -470,6 +470,37 @@ export function upcomingCollectionAt(
 }
 
 /**
+ * Orders the active jobs for the board. "Due today" is decided on the
+ * viewer's own calendar day (the API cannot know it): a job is FUTURE only
+ * when it is still New or Allocated and its scheduled collection is on a later
+ * local day than `now`. Everything else (unscheduled, due today, overdue,
+ * already collected) is CURRENT and keeps the order the API sent. The board
+ * lists the current jobs first, then the future ones soonest first (equal
+ * times keep the API order).
+ */
+export function orderActiveJobsForBoard<
+  T extends Pick<DeliveryJob, "status" | "scheduledCollectionAt">,
+>(jobs: T[], now: Date = new Date()): T[] {
+  const startOfTomorrow = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+  ).getTime();
+
+  const scheduledTime = (job: T): number => {
+    const scheduledAt = upcomingCollectionAt(job);
+    return scheduledAt ? new Date(scheduledAt).getTime() : Number.NaN;
+  };
+  const isFuture = (job: T): boolean => scheduledTime(job) >= startOfTomorrow;
+
+  const current = jobs.filter((job) => !isFuture(job));
+  const future = jobs
+    .filter(isFuture)
+    .sort((a, b) => scheduledTime(a) - scheduledTime(b));
+  return [...current, ...future];
+}
+
+/**
  * Whether the controller still has to phone the mother to arrange a collection:
  * a milk job the API flags as needing it, and which has no time yet.
  */

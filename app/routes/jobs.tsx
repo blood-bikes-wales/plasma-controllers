@@ -23,6 +23,7 @@ import {
   formatScheduledCollection,
   isMilkJob,
   jobErrorMessage,
+  orderActiveJobsForBoard,
   upcomingCollectionAt,
 } from "~/lib/jobs";
 import { addressWithPostcode } from "~/lib/postcode";
@@ -257,8 +258,12 @@ function JobCard({
             />
 
             <div className="flex items-center justify-between gap-3 border-t border-bb-gray-100 pt-4 dark:border-bb-gray-700">
-              <CreatedAt createdAt={job.createdAt} />
-              <span className="text-sm font-semibold text-bb-cta group-hover:underline dark:text-primary">
+              {/* The arranged time above replaces the created time, which would only be noise next to it.
+                  Only when it can really be shown, so an unreadable date never drops both. */}
+              {formatScheduledCollection(upcomingCollectionAt(job)) ? null : (
+                <CreatedAt createdAt={job.createdAt} />
+              )}
+              <span className="ml-auto text-sm font-semibold text-bb-cta group-hover:underline dark:text-primary">
                 {actionLabel}
               </span>
             </div>
@@ -460,7 +465,12 @@ export default function JobsPage() {
     void load();
   }
 
-  const sourceJobs = jobsForTab(activeTab, activeJobs, completedJobs);
+  // Jobs for a later day come after today's, soonest first (not on Completed).
+  const sourceJobs = jobsForTab(
+    activeTab,
+    orderActiveJobsForBoard(activeJobs),
+    completedJobs,
+  );
   const visibleJobs = sourceJobs.filter(
     (job) =>
       matchesStatusTab(job, activeTab) && matchesSearch(searchQuery, job),

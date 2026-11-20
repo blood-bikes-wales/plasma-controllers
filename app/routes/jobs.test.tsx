@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearActiveRole } from "~/lib/active-role";
 import { AuthProvider } from "~/lib/auth";
 import { clearAuthToken, setAuthToken } from "~/lib/auth-token";
@@ -226,6 +226,212 @@ describe("JobsPage", () => {
         name: new RegExp(delivered.reference),
       });
       expect(within(card).queryByText(/^Collection /)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("future jobs", () => {
+    // Only Date is faked (userEvent and waitFor keep their real timers), and
+    // the clock is pinned mid-day so no test depends on when it really runs.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 10, 20, 12, 0));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    // Local calendar parts, so "today" and "next week" mean the same in any timezone.
+    const at = (daysAhead: number, hours: number, minutes = 0) => {
+      const today = new Date();
+      return new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        today.getDate() + daysAhead,
+        hours,
+        minutes,
+      ).toISOString();
+    };
+    const [first, second] = mockActiveJobs;
+    const make = (
+      reference: string,
+      overrides: Partial<(typeof mockActiveJobs)[number]> = {},
+    ) => ({
+      ...first,
+      id: `99999999-9999-9999-9999-${reference.replace(/\D/g, "").padStart(12, "0")}`,
+      reference,
+      ...overrides,
+    });
+
+    function renderWithFutureJobs() {
+      return renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [Role.Controller] },
+          {
+            active: [
+              // The API sends the most recently updated first.
+              make("JB-3001", { scheduledCollectionAt: at(7, 10) }),
+              { ...first, scheduledCollectionAt: at(0, 23, 30) },
+              make("JB-3002", { scheduledCollectionAt: at(2, 9, 15) }),
+              { ...second, scheduledCollectionAt: null },
+              make("JB-3003", {
+                status: "Allocated",
+                scheduledCollectionAt: at(0, 0, 5),
+              }),
+            ],
+          },
+        ),
+      });
+    }
+
+    function listedReferences() {
+      return within(screen.getByRole("region", { name: "Active jobs" }))
+        .getAllByRole("link")
+        .map((link) => /JB-\d+/.exec(link.textContent ?? "")?.[0]);
+    }
+
+    it("lists future jobs under All and New with their date and time, without any filter", async () => {
+      const user = userEvent.setup();
+      renderWithFutureJobs();
+      await waitForJobsLoaded();
+
+      const label = (iso: string) => {
+        const date = new Date(iso);
+        const day = date.toLocaleDateString("en-GB", {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+        });
+        const time = date.toLocaleTimeString("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return `Collection ${day}, ${time}`;
+      };
+
+      const card = screen.getByRole("link", { name: /JB-3001/ });
+      expect(within(card).getByText(label(at(7, 10)))).toBeInTheDocument();
+      expect(within(card).getByText("Open")).toBeInTheDocument();
+      expect(within(card).queryByText(/Today|Created/)).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("tab", { name: "New" }));
+
+      expect(screen.getByRole("link", { name: /JB-3001/ })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /JB-3002/ })).toBeInTheDocument();
+      expect(
+        screen.queryByRole("link", { name: /JB-3003/ }),
+      ).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole("tab", { name: "Allocated" }));
+      expect(screen.getByRole("link", { name: /JB-3003/ })).toBeInTheDocument();
+    });
+
+    it("sorts them after today's jobs, soonest first, and keeps the API order for the rest", async () => {
+      renderWithFutureJobs();
+      await waitForJobsLoaded();
+
+      expect(listedReferences()).toEqual([
+        "JB-1042", // scheduled later today
+        "JB-1038", // unscheduled
+        "JB-3003", // scheduled for early today
+        "JB-3002", // in two days
+        "JB-3001", // next week
+      ]);
+    });
+
+    it.each([
+      ["a minute before midnight", new Date(2026, 10, 20, 23, 59, 30)],
+      ["a minute after midnight", new Date(2026, 10, 20, 0, 0, 30)],
+    ])("does not push a job scheduled for today into the future group %s", async (_label, now) => {
+      vi.setSystemTime(now);
+      renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [Role.Controller] },
+          {
+            active: [
+              make("JB-3001", { scheduledCollectionAt: at(0, 23, 59) }),
+              make("JB-3002", { scheduledCollectionAt: at(0, 0, 1) }),
+              make("JB-3003", { scheduledCollectionAt: null }),
+            ],
+          },
+        ),
+      });
+      await waitFor(() => {
+        expect(screen.getByText("JB-3001")).toBeInTheDocument();
+      });
+
+      expect(listedReferences()).toEqual(["JB-3001", "JB-3002", "JB-3003"]);
+    });
+
+    it("finds a future job by search, and keeps the order", async () => {
+      const user = userEvent.setup();
+      renderWithFutureJobs();
+      await waitForJobsLoaded();
+
+      await user.type(
+        screen.getByRole("searchbox", {
+          name: /search jobs by reference or hospital/i,
+        }),
+        "JB-300",
+      );
+
+      expect(listedReferences()).toEqual(["JB-3003", "JB-3002", "JB-3001"]);
+
+      await user.clear(screen.getByRole("searchbox"));
+      await user.type(screen.getByRole("searchbox"), "JB-3001");
+      expect(listedReferences()).toEqual(["JB-3001"]);
+    });
+
+    it("leaves the Completed list in the order the API sent", async () => {
+      const user = userEvent.setup();
+      const [delivered, cancelled] = mockCompletedJobs;
+      renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [Role.Controller] },
+          {
+            completed: [
+              { ...cancelled, scheduledCollectionAt: at(0, 9) },
+              { ...delivered, scheduledCollectionAt: at(7, 9) },
+            ],
+          },
+        ),
+      });
+      await waitForJobsLoaded();
+
+      await user.click(screen.getByRole("tab", { name: "Completed" }));
+
+      const links = within(
+        screen.getByRole("region", { name: "Completed jobs" }),
+      ).getAllByRole("link");
+      expect(links[0]).toHaveTextContent(cancelled.reference);
+      expect(links[1]).toHaveTextContent(delivered.reference);
+    });
+
+    it("keeps the created time when the arranged time cannot be read", async () => {
+      renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [Role.Controller] },
+          {
+            active: [{ ...first, scheduledCollectionAt: "not a date" }],
+          },
+        ),
+      });
+      await waitForJobsLoaded();
+
+      const card = screen.getByRole("link", { name: /JB-1042/ });
+      expect(within(card).queryByText(/^Collection /)).not.toBeInTheDocument();
+      expect(
+        within(card).getByText(/\d{1,2} \w{3}, \d\d:\d\d/),
+      ).toBeInTheDocument();
+    });
+
+    it("keeps the created time on a job with no arranged time", async () => {
+      renderWithFutureJobs();
+      await waitForJobsLoaded();
+
+      const card = screen.getByRole("link", { name: /JB-1038/ });
+      expect(
+        within(card).getByText(/Today, |\d{1,2} \w{3}, \d\d:\d\d/),
+      ).toBeInTheDocument();
     });
   });
 
