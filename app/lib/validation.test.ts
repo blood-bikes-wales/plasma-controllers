@@ -144,4 +144,20 @@ describe("apiFieldErrors for job types", () => {
       jobType: "The selected job type is invalid.",
     });
   });
+
+  it("lands the mother's contact errors on their own fields", () => {
+    expect(
+      apiFieldErrors({
+        errors: {
+          "mother.name": ["Enter the mother's name."],
+          "mother.phone": ["Enter the mother's phone number."],
+          "mother.secondaryPhone": ["Enter a valid UK phone number."],
+        },
+      }),
+    ).toEqual({
+      motherName: "Enter the mother's name.",
+      motherPhone: "Enter the mother's phone number.",
+      motherSecondaryPhone: "Enter a valid UK phone number.",
+    });
+  });
 });

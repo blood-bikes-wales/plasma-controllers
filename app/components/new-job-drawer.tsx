@@ -38,7 +38,13 @@ import {
   type ServiceAreaOption,
   serviceAreaLabel,
 } from "~/lib/service-areas";
-import { apiFieldErrors, fieldErrors, ukPhoneSchema } from "~/lib/validation";
+import {
+  apiFieldErrors,
+  fieldErrors,
+  isUkPhoneNumber,
+  UK_PHONE_MESSAGE,
+  ukPhoneSchema,
+} from "~/lib/validation";
 
 const placeLocationSchema: z.ZodType<PlaceLocation> = z.object({
   placeId: z.string().min(1),
@@ -71,7 +77,18 @@ const JOB_TYPE_OPTIONS = [
  */
 const milkFieldsSchema = z.object({
   milkLitres: z.string(),
+  motherName: z.string(),
+  motherPhone: z.string(),
+  motherSecondaryPhone: z.string(),
 });
+
+/** Every Milk-only form field, so leaving Milk can forget them together. */
+const MILK_FIELD_KEYS = Object.keys(milkFieldsSchema.shape) as Array<
+  keyof typeof milkFieldsSchema.shape
+>;
+
+const MOTHER_NAME_REQUIRED = "Enter the mother's name";
+const MOTHER_PHONE_REQUIRED = "Enter the mother's phone number";
 
 const MILK_LITRES_REQUIRED = "Enter how many litres of milk";
 const MILK_LITRES_INVALID = "Litres must be a number greater than 0";
@@ -145,6 +162,39 @@ function validateTypeFields(
       message: parsed.error,
     });
   }
+
+  if (form.motherName.trim() === "") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["motherName"],
+      message: MOTHER_NAME_REQUIRED,
+    });
+  }
+
+  const motherPhone = form.motherPhone.trim();
+  if (motherPhone === "") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["motherPhone"],
+      message: MOTHER_PHONE_REQUIRED,
+    });
+  } else if (!isUkPhoneNumber(motherPhone)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["motherPhone"],
+      message: UK_PHONE_MESSAGE,
+    });
+  }
+
+  // The second phone is optional, so it is only checked once something is typed.
+  const secondaryPhone = form.motherSecondaryPhone.trim();
+  if (secondaryPhone !== "" && !isUkPhoneNumber(secondaryPhone)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["motherSecondaryPhone"],
+      message: UK_PHONE_MESSAGE,
+    });
+  }
 }
 
 const newJobFormSchema = newJobBaseSchema.superRefine(validateTypeFields);
@@ -154,6 +204,9 @@ type NewJobFormState = z.input<typeof newJobFormSchema>;
 const EMPTY_FORM: NewJobFormState = {
   jobType: "standard",
   milkLitres: "",
+  motherName: "",
+  motherPhone: "",
+  motherSecondaryPhone: "",
   senderName: "",
   senderPhone: "",
   senderOrganisation: "",
@@ -342,6 +395,86 @@ function MilkSection({
   );
 }
 
+function MotherContactSection({
+  name,
+  phone,
+  secondaryPhone,
+  onChange,
+  errors,
+}: {
+  name: string;
+  phone: string;
+  secondaryPhone: string;
+  onChange: (
+    field: "motherName" | "motherPhone" | "motherSecondaryPhone",
+    value: string,
+  ) => void;
+  errors: Record<string, string>;
+}) {
+  return (
+    <FormSection title="Mother's contact">
+      <div className="space-y-2">
+        <Label
+          htmlFor="mother-name"
+          className="text-bb-gray-700 dark:text-bb-gray-300"
+        >
+          Name
+        </Label>
+        <Input
+          id="mother-name"
+          autoComplete="off"
+          value={name}
+          onChange={(event) => onChange("motherName", event.target.value)}
+          aria-invalid={!!errors.motherName}
+          className="h-11 text-base dark:bg-input/30"
+        />
+        <FieldError message={errors.motherName} />
+      </div>
+      <div className="space-y-2">
+        <Label
+          htmlFor="mother-phone"
+          className="text-bb-gray-700 dark:text-bb-gray-300"
+        >
+          Phone
+        </Label>
+        <Input
+          id="mother-phone"
+          type="tel"
+          autoComplete="off"
+          value={phone}
+          onChange={(event) => onChange("motherPhone", event.target.value)}
+          aria-invalid={!!errors.motherPhone}
+          className="h-11 text-base dark:bg-input/30"
+          placeholder="e.g. 07700 900101"
+        />
+        <FieldError message={errors.motherPhone} />
+      </div>
+      <div className="space-y-2">
+        <Label
+          htmlFor="mother-phone-secondary"
+          className="text-bb-gray-700 dark:text-bb-gray-300"
+        >
+          Second phone{" "}
+          <span className="font-normal text-bb-gray-500">(optional)</span>
+        </Label>
+        <Input
+          id="mother-phone-secondary"
+          type="tel"
+          autoComplete="off"
+          value={secondaryPhone}
+          onChange={(event) =>
+            onChange("motherSecondaryPhone", event.target.value)
+          }
+          aria-invalid={!!errors.motherSecondaryPhone}
+          className="h-11 text-base dark:bg-input/30"
+          placeholder="e.g. 029 2074 7747"
+        />
+        <FieldError message={errors.motherSecondaryPhone} />
+      </div>
+    </FormSection>
+  );
+}
+
 function withNotes(
   location: PlaceLocation,
   notes: string,
@@ -371,10 +504,20 @@ function payloadFromForm(
 
   const milk =
     form.jobType === "milk" ? parseMilkLitres(form.milkLitres) : null;
+  const secondaryPhone = form.motherSecondaryPhone.trim();
+  const mother =
+    form.jobType === "milk"
+      ? {
+          name: form.motherName.trim(),
+          phone: form.motherPhone.trim(),
+          ...(secondaryPhone ? { secondaryPhone } : {}),
+        }
+      : null;
 
   return {
     jobType: form.jobType,
     ...(milk && "litres" in milk ? { milkLitres: milk.litres } : {}),
+    ...(mother ? { mother } : {}),
     sender,
     collection: withNotes(form.collection, form.collectionNotes),
     delivery: withNotes(form.delivery, form.deliveryNotes),
@@ -512,19 +655,28 @@ export function NewJobDrawer({
     setForm((current) => ({
       ...current,
       jobType,
-      // Litres belong to milk jobs only, so leaving Milk forgets them.
-      milkLitres: jobType === "milk" ? current.milkLitres : "",
+      // Litres and the mother's contact belong to milk jobs only, so leaving
+      // Milk forgets them.
+      ...(jobType === "milk"
+        ? {}
+        : {
+            milkLitres: "",
+            motherName: "",
+            motherPhone: "",
+            motherSecondaryPhone: "",
+          }),
     }));
     setErrors((current) => {
-      if (!("jobType" in current) && !("milkLitres" in current)) {
-        return current;
-      }
       const next = { ...current };
       delete next.jobType;
       if (jobType !== "milk") {
-        delete next.milkLitres;
+        for (const key of MILK_FIELD_KEYS) {
+          delete next[key];
+        }
       }
-      return next;
+      return Object.keys(next).length === Object.keys(current).length
+        ? current
+        : next;
     });
   }
 
@@ -758,6 +910,16 @@ export function NewJobDrawer({
                 litres={form.milkLitres}
                 onLitresChange={(value) => updateField("milkLitres", value)}
                 error={errors.milkLitres}
+              />
+            ) : null}
+
+            {form.jobType === "milk" ? (
+              <MotherContactSection
+                name={form.motherName}
+                phone={form.motherPhone}
+                secondaryPhone={form.motherSecondaryPhone}
+                onChange={updateField}
+                errors={errors}
               />
             ) : null}
 

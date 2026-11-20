@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Phone } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import { z } from "zod";
@@ -10,7 +10,7 @@ import { JobTypeLabel } from "~/components/job-type-label";
 import { RelayJobForm } from "~/components/relay-job-form";
 import { SearchableSelectField } from "~/components/searchable-select-field";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
+import { Button, buttonVariants } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -31,6 +31,7 @@ import {
   fromDateTimeLocalValue,
   getJobDate,
   isRelayJob,
+  type JobMother,
   jobErrorMessage,
   performJobAction,
   relayJob,
@@ -73,6 +74,51 @@ function statusBadgeClass(status: string) {
     default:
       return "border-bb-gray-200 bg-bb-white text-bb-gray-700 dark:bg-bb-gray-700 dark:text-bb-gray-100";
   }
+}
+
+/** A `tel:` target without the spaces, brackets and hyphens people type. */
+function telHref(phone: string): string {
+  return `tel:${phone.replace(/[\s()-]/g, "")}`;
+}
+
+/**
+ * The mother's name with each number as a tap-to-call link. Only rendered when
+ * the API sent it, which it does for roles that can create jobs.
+ */
+function MotherContact({ mother }: { mother: JobMother }) {
+  const phones = [mother.phone, mother.secondaryPhone].filter(
+    (phone): phone is string => typeof phone === "string" && phone !== "",
+  );
+
+  return (
+    <section
+      aria-label="Mother's contact"
+      className="space-y-2 text-sm text-bb-gray-600 dark:text-bb-gray-300"
+    >
+      <p>
+        <span className="font-medium text-bb-gray-900 dark:text-bb-gray-100">
+          Mother:
+        </span>{" "}
+        {mother.name}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {phones.map((phone, index) => (
+          <a
+            key={phone}
+            href={telHref(phone)}
+            aria-label={`Call ${mother.name}${index > 0 ? " on second number" : ""}: ${phone}`}
+            className={cn(
+              buttonVariants({ variant: "outline", size: "sm" }),
+              "h-9 gap-1.5 px-3",
+            )}
+          >
+            <Phone className="size-4" aria-hidden="true" />
+            {phone}
+          </a>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 function JobRouteSummary({ job }: { job: DeliveryJob }) {
@@ -558,6 +604,7 @@ export default function JobDetailPage() {
         <CardContent className="space-y-5">
           <JobTypeLabel job={job} />
           <JobRouteSummary job={job} />
+          {job.mother ? <MotherContact mother={job.mother} /> : null}
           <div className="space-y-1 text-sm text-bb-gray-600 dark:text-bb-gray-300">
             <p>
               <span className="font-medium text-bb-gray-900 dark:text-bb-gray-100">

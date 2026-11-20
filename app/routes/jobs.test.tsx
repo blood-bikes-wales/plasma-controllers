@@ -157,6 +157,38 @@ describe("JobsPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("does not show the mother's contact on the board", async () => {
+    const [standard, other] = mockActiveJobs;
+    renderJobsPage("/jobs", {
+      fetchImpl: stubJobsFetch(
+        { ...mockAuthUser, roles: [Role.Controller] },
+        {
+          active: [
+            standard,
+            {
+              ...other,
+              id: "99999999-9999-9999-9999-999999999991",
+              reference: "JB-2001",
+              jobType: "milk",
+              milkLitres: 2.5,
+              mother: {
+                name: "Megan Evans",
+                phone: "07700 900101",
+                secondaryPhone: "029 2018 0000",
+              },
+            },
+          ],
+        },
+      ),
+    });
+    await waitForJobsLoaded();
+
+    expect(screen.getByRole("link", { name: /JB-2001/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Megan Evans/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/07700 900101/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/029 2018 0000/)).not.toBeInTheDocument();
+  });
+
   it("filters jobs when searching", async () => {
     const user = userEvent.setup();
     renderJobsPage();
