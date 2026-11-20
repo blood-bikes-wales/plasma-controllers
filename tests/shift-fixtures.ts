@@ -138,6 +138,7 @@ export function stubShiftsFetch(
       const shiftId = logoffMatch[1];
       const payload = JSON.parse(String(init?.body ?? "{}")) as {
         endMileage?: number;
+        faults?: string;
       };
       const index = shifts.findIndex((shift) => shift.id === shiftId);
       if (index === -1) {
@@ -147,6 +148,12 @@ export function stubShiftsFetch(
       const bike = bikes.find((candidate) => candidate.id === shift.bikeId);
       if (bike && payload.endMileage !== undefined) {
         bike.lastRecordedMileage = payload.endMileage;
+      }
+      if (bike) {
+        bike.lastShiftNote = payload.faults?.trim() || null;
+        bike.lastShiftNoteAt = bike.lastShiftNote
+          ? new Date().toISOString()
+          : null;
       }
       return jsonResponse(shift);
     }

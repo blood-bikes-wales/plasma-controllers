@@ -12,6 +12,10 @@ export type BikeOption = {
   /** Service-area code the bike belongs to. */
   area?: string;
   lastRecordedMileage: number;
+  /** Faults entered when the last rider on this bike logged off, if any. */
+  lastShiftNote?: string | null;
+  /** ISO time that last shift ended. */
+  lastShiftNoteAt?: string | null;
 };
 
 /** A bike picked for a rider with the mileage it starts from. */

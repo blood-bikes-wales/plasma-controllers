@@ -6,6 +6,10 @@ export type Bike = {
   area?: string;
   status?: "active" | "retired";
   lastRecordedMileage: number;
+  /** Faults entered when the last rider on this bike logged off, if any. */
+  lastShiftNote?: string | null;
+  /** ISO time that last shift ended. */
+  lastShiftNoteAt?: string | null;
 };
 
 /**

@@ -231,10 +231,19 @@ export default function ShiftsPage() {
       const shift = activeShifts.find((item) => item.id === shiftId);
       if (shift?.bikeId && result.endMileage !== undefined) {
         const { endMileage } = result;
+        // This log off is now the bike's latest shift: its faults replace the
+        // old note, and no faults clears it (the API trims and drops blanks).
+        const lastShiftNote = result.faults?.trim() || null;
+        const lastShiftNoteAt = lastShiftNote ? new Date().toISOString() : null;
         setBikes((current) =>
           current.map((bike) =>
             bike.id === shift.bikeId
-              ? { ...bike, lastRecordedMileage: endMileage }
+              ? {
+                  ...bike,
+                  lastRecordedMileage: endMileage,
+                  lastShiftNote,
+                  lastShiftNoteAt,
+                }
               : bike,
           ),
         );

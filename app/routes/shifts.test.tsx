@@ -53,6 +53,31 @@ async function waitForShiftsLoaded() {
   });
 }
 
+async function logOffMike(
+  user: ReturnType<typeof userEvent.setup>,
+  faults: string,
+) {
+  await user.click(screen.getByRole("button", { name: "Log off" }));
+  await user.type(screen.getByLabelText("End mileage"), "9950");
+  if (faults) await user.type(screen.getByLabelText(/Faults/), faults);
+  const dialog = await screen.findByRole("dialog");
+  await user.click(within(dialog).getByRole("button", { name: "Log off" }));
+  await waitFor(() => {
+    expect(screen.getByText("0 on duty")).toBeInTheDocument();
+  });
+}
+
+async function logOnSarahToBike(
+  user: ReturnType<typeof userEvent.setup>,
+  registration: string,
+) {
+  await user.click(screen.getByRole("button", { name: "Log on rider" }));
+  await user.click(screen.getByRole("combobox", { name: "Rider" }));
+  await user.click(await screen.findByRole("option", { name: "Sarah Jones" }));
+  await user.click(screen.getByRole("combobox", { name: "Bike" }));
+  await user.click(await screen.findByRole("option", { name: registration }));
+}
+
 describe("ShiftsPage", () => {
   it("exports page meta", () => {
     expect(meta({} as Parameters<typeof meta>[0])).toEqual([
@@ -314,6 +339,44 @@ describe("ShiftsPage", () => {
     expect(
       screen.getByText("No riders are currently on shift."),
     ).toBeInTheDocument();
+  });
+
+  it("shows the faults left at log off when the next rider is logged on to that bike", async () => {
+    const user = userEvent.setup();
+    renderShiftsPage();
+    await waitForShiftsLoaded();
+
+    await logOffMike(user, "Rear brake feels soft");
+
+    await logOnSarahToBike(user, "CF34 DEF");
+    expect(screen.getByTestId("last-shift-note")).toHaveTextContent(
+      "Rear brake feels soft",
+    );
+  });
+
+  it("stops showing the note once the next rider logs off with no faults", async () => {
+    const user = userEvent.setup();
+    renderShiftsPage();
+    await waitForShiftsLoaded();
+
+    await logOffMike(user, "Rear brake feels soft");
+    await logOnSarahToBike(user, "CF34 DEF");
+    expect(screen.getByTestId("last-shift-note")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Log on" }));
+    await waitFor(() => {
+      expect(screen.getByText("1 on duty")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Log off" }));
+    await user.type(screen.getByLabelText("End mileage"), "10020");
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Log off" }));
+    await waitFor(() => {
+      expect(screen.getByText("0 on duty")).toBeInTheDocument();
+    });
+
+    await logOnSarahToBike(user, "CF34 DEF");
+    expect(screen.queryByTestId("last-shift-note")).not.toBeInTheDocument();
   });
 
   it("rejects an end mileage lower than the start mileage", async () => {

@@ -1,3 +1,5 @@
+import { TriangleAlert } from "lucide-react";
+
 import { FieldError } from "~/components/field-error";
 import { SearchableSelectField } from "~/components/searchable-select-field";
 import { Card, CardContent } from "~/components/ui/card";
@@ -9,6 +11,7 @@ import {
   noBikesMessage,
   type RiderOption,
 } from "~/lib/bike-assignment";
+import { formatShiftStartedAt } from "~/lib/shifts";
 
 type BikeAssignmentFieldsProps = {
   /** Prefix for the element ids, e.g. `logon` gives `logon-bike`. */
@@ -21,8 +24,9 @@ type BikeAssignmentFieldsProps = {
 };
 
 /**
- * The bike (limited to the rider's areas), its prefilled start mileage and the
- * mileage variance reason. The mileage fields appear once a bike is chosen.
+ * The bike (limited to the rider's areas), the note left at the last log off on
+ * it, its prefilled start mileage and the mileage variance reason. The note and
+ * mileage fields appear once a bike is chosen.
  */
 export function BikeAssignmentFields({
   idPrefix,
@@ -47,6 +51,34 @@ export function BikeAssignmentFields({
         error={errors.bikeId}
         emptyMessage={noBikesMessage(rider)}
       />
+
+      {state.selectedBike?.lastShiftNote ? (
+        <Card
+          data-testid="last-shift-note"
+          className="rounded-bb-card border-2 border-bb-warning bg-bb-warning-light py-0 shadow-none dark:bg-bb-warning/20"
+        >
+          <CardContent className="flex gap-3 p-4">
+            <TriangleAlert
+              aria-hidden="true"
+              className="mt-0.5 size-5 shrink-0 text-bb-warning"
+            />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-bb-warning">
+                Note from the last shift on {state.selectedBike.registration}
+              </p>
+              <p className="whitespace-pre-wrap text-sm text-bb-gray-900 dark:text-bb-gray-100">
+                {state.selectedBike.lastShiftNote}
+              </p>
+              {state.selectedBike.lastShiftNoteAt ? (
+                <p className="text-xs text-bb-gray-700 dark:text-bb-gray-300">
+                  Left{" "}
+                  {formatShiftStartedAt(state.selectedBike.lastShiftNoteAt)}
+                </p>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {state.selectedBike ? (
         <div className="space-y-2">
