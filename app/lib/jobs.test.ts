@@ -16,6 +16,7 @@ import {
   getJobDate,
   isMilkJob,
   isRelayJob,
+  jobAttentionLabel,
   jobErrorMessage,
   needsMotherContact,
   orderActiveJobsForBoard,
@@ -419,6 +420,203 @@ describe("needsMotherContact", () => {
     expect(
       needsMotherContact({ ...unscheduledMilk, status: "Allocated" }),
     ).toBe(false);
+  });
+});
+
+describe("jobAttentionLabel", () => {
+  // Fixed instant and offset-free "Z" times: nothing here depends on the timezone.
+  const now = new Date("2026-11-20T12:00:00Z");
+  const future = "2026-11-27T10:00:00Z";
+  const past = "2026-11-19T10:00:00Z";
+  const rider = {
+    id: "100001",
+    name: "Alex Morgan",
+    shiftId: "shift-1",
+    allocatedAt: "2026-11-20T09:00:00Z",
+  };
+  type Attention = Parameters<typeof jobAttentionLabel>[0] &
+    Pick<DeliveryJob, "isRelay" | "legs">;
+  const base: Attention = {
+    jobType: "standard",
+    status: "New",
+    scheduledCollectionAt: null,
+    allocatedRider: null,
+  };
+  // The API flag as an admin/controller gets it for an unscheduled milk job.
+  const unscheduledMilk: Attention = {
+    ...base,
+    jobType: "milk",
+    needsMotherContact: true,
+  };
+  const label = (overrides: Partial<Attention>) =>
+    jobAttentionLabel({ ...base, ...overrides }, now);
+
+  it("says the mother is not contacted on an unscheduled New milk job", () => {
+    expect(jobAttentionLabel(unscheduledMilk, now)).toBe(
+      "Mother not contacted",
+    );
+  });
+
+  it("says no rider is allocated on a future New job without a rider", () => {
+    expect(label({ scheduledCollectionAt: future })).toBe("No rider allocated");
+    expect(
+      label({ scheduledCollectionAt: future, allocatedRider: undefined }),
+    ).toBe("No rider allocated");
+  });
+
+  it("says no rider on a scheduled milk job once the mother is contacted", () => {
+    expect(
+      label({
+        jobType: "milk",
+        needsMotherContact: false,
+        scheduledCollectionAt: future,
+      }),
+    ).toBe("No rider allocated");
+  });
+
+  it("puts the mother first when both could apply", () => {
+    expect(
+      jobAttentionLabel(
+        { ...unscheduledMilk, scheduledCollectionAt: null },
+        now,
+      ),
+    ).toBe("Mother not contacted");
+  });
+
+  it("shows nothing for an unscheduled standard job, or a past or unreadable time", () => {
+    expect(label({})).toBeNull();
+    expect(label({ scheduledCollectionAt: past })).toBeNull();
+    expect(label({ scheduledCollectionAt: now.toISOString() })).toBeNull();
+    expect(label({ scheduledCollectionAt: "not a date" })).toBeNull();
+    expect(
+      label({
+        jobType: "milk",
+        needsMotherContact: false,
+        scheduledCollectionAt: past,
+      }),
+    ).toBeNull();
+  });
+
+  it("shows nothing once a rider is allocated", () => {
+    expect(
+      label({ scheduledCollectionAt: future, allocatedRider: rider }),
+    ).toBeNull();
+    expect(label({ status: "Allocated", allocatedRider: rider })).toBeNull();
+    expect(
+      label({
+        status: "Allocated",
+        scheduledCollectionAt: future,
+        allocatedRider: rider,
+      }),
+    ).toBeNull();
+  });
+
+  it("shows nothing for Collected, Delivered and Cancelled jobs", () => {
+    for (const status of ["Collected", "Delivered", "Cancelled"]) {
+      expect(label({ status, scheduledCollectionAt: future })).toBeNull();
+      expect(label({ ...unscheduledMilk, status })).toBeNull();
+    }
+  });
+
+  it("shows nothing on a relay leg", () => {
+    expect(
+      label({ parentJobId: "parent-1", scheduledCollectionAt: future }),
+    ).toBeNull();
+    expect(label({ legNumber: 2, scheduledCollectionAt: future })).toBeNull();
+    expect(
+      label({
+        ...unscheduledMilk,
+        parentJobId: "parent-1",
+        legNumber: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("says no rider on a New relay parent scheduled in the future, which has a leg still unallocated", () => {
+    expect(label({ isRelay: true, scheduledCollectionAt: future })).toBe(
+      "No rider allocated",
+    );
+    expect(
+      label({
+        isRelay: true,
+        legs: [{ id: "leg-1" } as DeliveryJob],
+        scheduledCollectionAt: future,
+      }),
+    ).toBe("No rider allocated");
+  });
+
+  it("shows nothing on a relay parent once every active leg has a rider (parent is Allocated or later)", () => {
+    for (const status of ["Allocated", "Collected", "Delivered", "Cancelled"]) {
+      expect(
+        label({ isRelay: true, status, scheduledCollectionAt: future }),
+      ).toBeNull();
+    }
+  });
+
+  it("shows nothing on a relay parent scheduled in the past", () => {
+    expect(label({ isRelay: true, scheduledCollectionAt: past })).toBeNull();
+  });
+
+  it("still asks for the mother on an unscheduled milk relay parent, as the API does", () => {
+    expect(label({ ...unscheduledMilk, isRelay: true })).toBe(
+      "Mother not contacted",
+    );
+  });
+
+  it("trusts the flag when the API sends it", () => {
+    expect(label({ jobType: "milk", needsMotherContact: false })).toBeNull();
+    expect(label({ jobType: "standard", needsMotherContact: true })).toBeNull();
+  });
+
+  describe("when the API sends no needsMotherContact (rider, driver, trustee, older API)", () => {
+    // Same rule as the API: milk, New and no scheduled time.
+    it("derives it for an unscheduled New milk job", () => {
+      expect(label({ jobType: "milk" })).toBe("Mother not contacted");
+      expect(label({ jobType: "milk", needsMotherContact: undefined })).toBe(
+        "Mother not contacted",
+      );
+    });
+
+    it("derives nothing for a scheduled milk job beyond the rider line", () => {
+      expect(label({ jobType: "milk", scheduledCollectionAt: future })).toBe(
+        "No rider allocated",
+      );
+      expect(
+        label({
+          jobType: "milk",
+          scheduledCollectionAt: future,
+          allocatedRider: rider,
+        }),
+      ).toBeNull();
+    });
+
+    it("derives nothing for standard, other, or finished jobs", () => {
+      expect(label({ jobType: undefined })).toBeNull();
+      expect(label({ jobType: "standard" })).toBeNull();
+      expect(label({ jobType: "milk", status: "Allocated" })).toBeNull();
+      expect(label({ jobType: "milk", status: "Delivered" })).toBeNull();
+      expect(label({ jobType: "milk", status: "Cancelled" })).toBeNull();
+    });
+
+    it("never derives it on a relay leg", () => {
+      expect(label({ jobType: "milk", parentJobId: "parent-1" })).toBeNull();
+    });
+  });
+
+  it("uses the real clock when no now is given", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(now);
+      expect(
+        jobAttentionLabel({ ...base, scheduledCollectionAt: future }),
+      ).toBe("No rider allocated");
+      vi.setSystemTime(new Date("2026-12-01T00:00:00Z"));
+      expect(
+        jobAttentionLabel({ ...base, scheduledCollectionAt: future }),
+      ).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

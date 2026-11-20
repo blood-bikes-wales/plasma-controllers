@@ -518,6 +518,69 @@ export function needsMotherContact(
   );
 }
 
+export const MOTHER_NOT_CONTACTED_LABEL = "Mother not contacted";
+export const NO_RIDER_ALLOCATED_LABEL = "No rider allocated";
+
+/**
+ * The one thing on a job that still needs chasing, for the board card, or null
+ * when nothing does. In priority order:
+ * 1. "Mother not contacted": a milk job still waiting for its first call.
+ * 2. "No rider allocated": a New job arranged for a time after `now` that has
+ *    no rider yet (a scheduled milk job lands here once the mother is called).
+ * Only New jobs ask for attention, so Allocated, Collected, Delivered and
+ * Cancelled jobs never show a line. A relay leg never does (the relay's parent
+ * is the one the controller chases). A relay parent follows the same rules as
+ * any job: it has no rider of its own, but the API sets its status to the
+ * least advanced of its active legs (`RelayJobStatusAggregator`), so it is New
+ * exactly when a leg is still unallocated, and Allocated or later once every
+ * active leg has a rider.
+ *
+ * `needsMotherContact` is only sent to roles that can create jobs. When the key
+ * is absent (rider, driver, trustee, or an API that predates it) the same rule
+ * the API uses is derived from fields every role gets: milk, New, and no
+ * scheduled time. `now` is injectable so tests do not depend on the clock.
+ */
+export function jobAttentionLabel(
+  job: Pick<
+    DeliveryJob,
+    | "jobType"
+    | "status"
+    | "needsMotherContact"
+    | "scheduledCollectionAt"
+    | "allocatedRider"
+    | "parentJobId"
+    | "legNumber"
+  >,
+  now: Date = new Date(),
+): string | null {
+  if (job.status !== "New") {
+    return null;
+  }
+
+  const isLeg =
+    Boolean(job.parentJobId) ||
+    (job.legNumber !== null && job.legNumber !== undefined);
+  if (isLeg) {
+    return null;
+  }
+
+  const unscheduledMilk = isMilkJob(job) && !job.scheduledCollectionAt;
+  const mothersNotContacted =
+    job.needsMotherContact === undefined
+      ? unscheduledMilk
+      : job.needsMotherContact && unscheduledMilk;
+  if (mothersNotContacted) {
+    return MOTHER_NOT_CONTACTED_LABEL;
+  }
+
+  if (job.allocatedRider || !job.scheduledCollectionAt) {
+    return null;
+  }
+
+  const scheduledAt = new Date(job.scheduledCollectionAt).getTime();
+  return scheduledAt > now.getTime() ? NO_RIDER_ALLOCATED_LABEL : null;
+}
+
 /** Current local time as an `<input type="time">` value (HH:mm). */
 export function defaultTimeValue(): string {
   return toDateTimeLocalValue(new Date().toISOString()).slice(11);
