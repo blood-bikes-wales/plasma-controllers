@@ -12,10 +12,14 @@ import {
   formatEstimatedTime,
   formatJobCreatedAt,
   formatMilkLitres,
+  formatScheduledCollection,
   getJobDate,
   isMilkJob,
   isRelayJob,
   jobErrorMessage,
+  needsMotherContact,
+  scheduleJobCollection,
+  upcomingCollectionAt,
   waitingForLegMessage,
 } from "~/lib/jobs";
 
@@ -238,11 +242,156 @@ describe("combineDayAndTime", () => {
 });
 
 describe("getJobDate", () => {
-  it("uses the created date", () => {
+  it("uses the created date when nothing is scheduled", () => {
     expect(getJobDate({ createdAt: "2026-03-10T09:00:00" })).toBe(
       "2026-03-10T09:00:00",
     );
+    expect(
+      getJobDate({
+        createdAt: "2026-03-10T09:00:00",
+        scheduledCollectionAt: null,
+      }),
+    ).toBe("2026-03-10T09:00:00");
     expect(getJobDate({ createdAt: null })).toBeNull();
+  });
+
+  it("prefers the scheduled collection time over the created date", () => {
+    expect(
+      getJobDate({
+        createdAt: "2026-03-10T09:00:00",
+        scheduledCollectionAt: "2026-03-17T10:00:00",
+      }),
+    ).toBe("2026-03-17T10:00:00");
+  });
+});
+
+describe("formatScheduledCollection", () => {
+  it("formats the day and the time", () => {
+    // Local time (no "Z") so the label is the same in any timezone.
+    expect(formatScheduledCollection("2026-08-29T14:30:00")).toBe(
+      "Sat 29 Aug, 14:30",
+    );
+  });
+
+  it("is empty when there is no usable time", () => {
+    expect(formatScheduledCollection(null)).toBe("");
+    expect(formatScheduledCollection(undefined)).toBe("");
+    expect(formatScheduledCollection("not a date")).toBe("");
+  });
+});
+
+describe("upcomingCollectionAt", () => {
+  const at = "2026-12-01T10:00:00Z";
+
+  it("returns the time for a New or Allocated job", () => {
+    expect(
+      upcomingCollectionAt({ status: "New", scheduledCollectionAt: at }),
+    ).toBe(at);
+    expect(
+      upcomingCollectionAt({ status: "Allocated", scheduledCollectionAt: at }),
+    ).toBe(at);
+  });
+
+  it("is null when unscheduled or once collected, delivered or cancelled", () => {
+    expect(
+      upcomingCollectionAt({ status: "New", scheduledCollectionAt: null }),
+    ).toBeNull();
+    expect(upcomingCollectionAt({ status: "New" })).toBeNull();
+    for (const status of ["Collected", "Delivered", "Cancelled"]) {
+      expect(
+        upcomingCollectionAt({ status, scheduledCollectionAt: at }),
+      ).toBeNull();
+    }
+  });
+});
+
+describe("needsMotherContact", () => {
+  const unscheduledMilk = {
+    jobType: "milk",
+    status: "New",
+    needsMotherContact: true,
+    scheduledCollectionAt: null,
+  };
+
+  it("is true for an unscheduled new milk job the API flags", () => {
+    expect(needsMotherContact(unscheduledMilk)).toBe(true);
+  });
+
+  it("is false for a standard job even when flagged", () => {
+    expect(
+      needsMotherContact({ ...unscheduledMilk, jobType: "standard" }),
+    ).toBe(false);
+    expect(needsMotherContact({ ...unscheduledMilk, jobType: undefined })).toBe(
+      false,
+    );
+  });
+
+  it("is false when the flag is false or absent (other roles, older API)", () => {
+    expect(
+      needsMotherContact({ ...unscheduledMilk, needsMotherContact: false }),
+    ).toBe(false);
+    expect(
+      needsMotherContact({ ...unscheduledMilk, needsMotherContact: undefined }),
+    ).toBe(false);
+  });
+
+  it("is false once a time is set or the job has moved on", () => {
+    expect(
+      needsMotherContact({
+        ...unscheduledMilk,
+        scheduledCollectionAt: "2026-12-01T10:00:00Z",
+      }),
+    ).toBe(false);
+    expect(
+      needsMotherContact({ ...unscheduledMilk, status: "Allocated" }),
+    ).toBe(false);
+  });
+});
+
+describe("scheduleJobCollection", () => {
+  it("POSTs the time to /jobs/{id}/schedule and returns the job", async () => {
+    const scheduled = {
+      ...CREATED_JOB,
+      scheduledCollectionAt: "2026-12-01T10:00:00.000Z",
+    };
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response(JSON.stringify(scheduled), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setAuthToken("test-token");
+
+    await expect(
+      scheduleJobCollection("job-1", "2026-12-01T10:00:00.000Z"),
+    ).resolves.toEqual(scheduled);
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toMatch(/\/jobs\/job-1\/schedule$/);
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      scheduledCollectionAt: "2026-12-01T10:00:00.000Z",
+    });
+  });
+
+  it("throws an ApiError when the API refuses the time", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ message: "Nope", errors: {} }), {
+            status: 422,
+            headers: { "Content-Type": "application/json" },
+          }),
+      ),
+    );
+    setAuthToken("test-token");
+
+    await expect(
+      scheduleJobCollection("job-1", "2020-01-01T00:00:00.000Z"),
+    ).rejects.toBeInstanceOf(ApiError);
   });
 });
 

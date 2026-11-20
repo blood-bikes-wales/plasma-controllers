@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   createMemoryRouter,
@@ -975,5 +981,399 @@ describe("Job detail waiting for an earlier relay leg", () => {
     expect(
       screen.getByText("Waiting for leg 2 to be delivered"),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Job detail: call the mother and schedule a milk collection", () => {
+  const mother = {
+    name: "Megan Evans",
+    phone: "07700 900101",
+    secondaryPhone: "029 2018 0000",
+  };
+  const base = mockActiveJobs[0];
+  const unscheduledMilk: DeliveryJob = {
+    ...base,
+    jobType: "milk",
+    milkLitres: 2.5,
+    mother,
+    needsMotherContact: true,
+    scheduledCollectionAt: null,
+  };
+
+  /** A local date-time a week from now at 10:00, as a datetime-local value. */
+  function nextWeekAtTen() {
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    date.setHours(10, 0, 0, 0);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return {
+      date,
+      value: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T10:00`,
+    };
+  }
+
+  function scheduleCall(
+    fetchStub: ReturnType<typeof renderJobDetail>["fetchStub"],
+  ) {
+    return fetchStub.mock.calls.find(([input]) =>
+      String(input).endsWith("/schedule"),
+    );
+  }
+
+  it("shows the reminder card with the mother's calls and a time field on an unscheduled milk job", async () => {
+    renderJobDetail({ active: [unscheduledMilk] });
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Call the mother to arrange collection",
+      }),
+    ).toBeInTheDocument();
+    const card = screen.getByRole("region", { name: "Arrange collection" });
+    expect(card).toHaveTextContent("Megan Evans");
+    expect(
+      within(card).getByRole("link", {
+        name: "Call Megan Evans: 07700 900101",
+      }),
+    ).toHaveAttribute("href", "tel:07700900101");
+    expect(
+      within(card).getByRole("link", {
+        name: "Call Megan Evans on second number: 029 2018 0000",
+      }),
+    ).toHaveAttribute("href", "tel:02920180000");
+
+    const field = within(card).getByLabelText("Collection date and time");
+    expect(field).toHaveAttribute("type", "datetime-local");
+    expect(
+      within(card).getByRole("button", { name: "Save collection time" }),
+    ).toBeInTheDocument();
+
+    // The mother's contact is in the card only, not repeated below it.
+    expect(
+      screen.getAllByRole("region", { name: "Mother's contact" }),
+    ).toHaveLength(1);
+  });
+
+  it("shows the reminder to an admin as well", async () => {
+    renderJobDetail({ roles: [Role.Admin], active: [unscheduledMilk] });
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Call the mother to arrange collection",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("never shows the reminder on a standard job", async () => {
+    renderJobDetail({
+      active: [
+        { ...base, jobType: "standard", needsMotherContact: false },
+        ...mockActiveJobs.slice(1),
+      ],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Call the mother to arrange collection"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show the reminder on a standard job even if the flag were set", async () => {
+    renderJobDetail({
+      active: [
+        { ...base, jobType: "standard", needsMotherContact: true },
+        ...mockActiveJobs.slice(1),
+      ],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Call the mother to arrange collection"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show the reminder to a rider, who is never sent the flag", async () => {
+    const {
+      needsMotherContact: _flag,
+      mother: _mother,
+      ...asRiderSees
+    } = unscheduledMilk;
+    renderJobDetail({ roles: [Role.Rider], active: [asRiderSees] });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Milk")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Call the mother to arrange collection"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show the reminder to a rider even if the flag were present", async () => {
+    renderJobDetail({ roles: [Role.Rider], active: [unscheduledMilk] });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Call the mother to arrange collection"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not show the reminder once the job has a scheduled time", async () => {
+    renderJobDetail({
+      active: [
+        {
+          ...unscheduledMilk,
+          needsMotherContact: false,
+          scheduledCollectionAt: "2026-08-29T14:30:00",
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByText("Collection arranged for Sat 29 Aug, 14:30"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Call the mother to arrange collection"),
+    ).not.toBeInTheDocument();
+    // With the card gone the mother's contact sits in the job card as before.
+    expect(
+      screen.getByRole("region", { name: "Mother's contact" }),
+    ).toBeInTheDocument();
+  });
+
+  it("only says the collection is arranged while the job is New or Allocated", async () => {
+    const scheduledCollectionAt = "2026-08-29T14:30:00";
+
+    renderJobDetail({
+      active: [
+        {
+          ...base,
+          status: "Collected",
+          allowedActions: ["deliver", "cancel"],
+          scheduledCollectionAt,
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "JB-1042" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/^Collection arranged for/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the arranged time on an Allocated job", async () => {
+    renderJobDetail({
+      jobId: mockActiveJobs[1].id,
+      active: [
+        { ...mockActiveJobs[1], scheduledCollectionAt: "2026-08-29T14:30:00" },
+      ],
+    });
+
+    expect(
+      await screen.findByText("Collection arranged for Sat 29 Aug, 14:30"),
+    ).toBeInTheDocument();
+  });
+
+  it("saves the time, then replaces the card with the arranged time", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({ active: [unscheduledMilk] });
+    const { date, value } = nextWeekAtTen();
+
+    fireEvent.change(await screen.findByLabelText("Collection date and time"), {
+      target: { value },
+    });
+    await user.click(
+      screen.getByRole("button", { name: "Save collection time" }),
+    );
+
+    const arranged = await screen.findByText(/^Collection arranged for /);
+    expect(arranged).toHaveTextContent(
+      `Collection arranged for ${date.toLocaleDateString("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      })}, 10:00`,
+    );
+    expect(
+      screen.queryByText("Call the mother to arrange collection"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Save collection time" }),
+    ).not.toBeInTheDocument();
+
+    const call = scheduleCall(fetchStub);
+    expect(call?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+      scheduledCollectionAt: date.toISOString(),
+    });
+  });
+
+  it("asks for a time before saving", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({ active: [unscheduledMilk] });
+
+    await user.click(
+      await screen.findByRole("button", { name: "Save collection time" }),
+    );
+
+    expect(
+      await screen.findByText("Enter the collection date and time"),
+    ).toBeInTheDocument();
+    expect(scheduleCall(fetchStub)).toBeUndefined();
+  });
+
+  it("rejects a time that has passed without calling the API", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({ active: [unscheduledMilk] });
+
+    fireEvent.change(await screen.findByLabelText("Collection date and time"), {
+      target: { value: "2020-01-01T10:00" },
+    });
+    await user.click(
+      screen.getByRole("button", { name: "Save collection time" }),
+    );
+
+    expect(
+      await screen.findByText("Choose a collection time in the future"),
+    ).toBeInTheDocument();
+    expect(scheduleCall(fetchStub)).toBeUndefined();
+    expect(
+      screen.getByText("Call the mother to arrange collection"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the API's message and keeps the card when the API refuses the time", async () => {
+    const user = userEvent.setup();
+    const { fetchStub } = renderJobDetail({ active: [unscheduledMilk] });
+    const { value } = nextWeekAtTen();
+
+    fireEvent.change(await screen.findByLabelText("Collection date and time"), {
+      target: { value },
+    });
+    fetchStub.mockImplementationOnce(
+      async () =>
+        new Response(
+          JSON.stringify({
+            message: "Choose a collection time in the future.",
+            errors: {
+              scheduledCollectionAt: [
+                "Choose a collection time in the future.",
+              ],
+            },
+          }),
+          { status: 422, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Save collection time" }),
+    );
+
+    expect(
+      await screen.findByText("Choose a collection time in the future."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Call the mother to arrange collection"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save collection time" }),
+    ).toBeEnabled();
+  });
+
+  describe("record forms use the scheduled day", () => {
+    // Local times (no "Z") so the calendar days are the same in any timezone.
+    const createdAt = "2026-03-10T09:00:00";
+    const scheduledCollectionAt = "2026-03-12T11:00:00";
+    const allocated: DeliveryJob = {
+      ...mockActiveJobs[1],
+      createdAt,
+      scheduledCollectionAt,
+    };
+    const collected: DeliveryJob = {
+      ...mockActiveJobs[1],
+      id: "33333333-3333-3333-3333-333333333333",
+      status: "Collected",
+      createdAt,
+      scheduledCollectionAt,
+      allowedActions: ["deliver", "cancel"],
+    };
+
+    function localDay(iso: string) {
+      const date = new Date(iso);
+      return [date.getFullYear(), date.getMonth() + 1, date.getDate()];
+    }
+
+    function bodyOf(
+      fetchStub: ReturnType<typeof renderJobDetail>["fetchStub"],
+      action: string,
+    ) {
+      const call = fetchStub.mock.calls.find(([input]) =>
+        String(input).includes(`/actions/${action}`),
+      );
+      expect(call).toBeDefined();
+      return JSON.parse(String(call?.[1]?.body));
+    }
+
+    it("sends the collection time on the scheduled day, not the created day", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderJobDetail({
+        jobId: allocated.id,
+        active: [allocated],
+      });
+
+      await user.click(await screen.findByLabelText("Contents confirmed"));
+      await user.click(await screen.findByRole("option", { name: "Yes" }));
+      await user.type(screen.getByLabelText("Job number"), "JN-3001");
+      expect(screen.getByText("On Thu 12 Mar (the job's day)")).toBeVisible();
+      fireEvent.change(screen.getByLabelText("Collection time"), {
+        target: { value: "14:30" },
+      });
+      await user.click(
+        screen.getByRole("button", { name: "Record collection" }),
+      );
+
+      expect(await screen.findByText("Collected · job JN-3001")).toBeVisible();
+      const { collectedAt } = bodyOf(fetchStub, "collect");
+      expect(localDay(collectedAt)).toEqual([2026, 3, 12]);
+      const sent = new Date(collectedAt);
+      expect([sent.getHours(), sent.getMinutes()]).toEqual([14, 30]);
+    });
+
+    it("sends the delivery time on the scheduled day, not the created day", async () => {
+      const user = userEvent.setup();
+      const { fetchStub } = renderJobDetail({
+        jobId: collected.id,
+        active: [collected],
+      });
+
+      const input = await screen.findByLabelText("Delivery time");
+      expect(screen.getByText("On Thu 12 Mar (the job's day)")).toBeVisible();
+      await user.type(screen.getByLabelText("Recipient"), "Sister Jones");
+      fireEvent.change(input, { target: { value: "16:45" } });
+      await user.click(screen.getByRole("button", { name: "Record delivery" }));
+
+      await waitFor(() => {
+        expect(screen.getByText("Delivered to Sister Jones")).toBeVisible();
+      });
+      const { deliveredAt } = bodyOf(fetchStub, "deliver");
+      expect(localDay(deliveredAt)).toEqual([2026, 3, 12]);
+    });
+
+    it("still uses the created day when nothing is scheduled", async () => {
+      renderJobDetail({
+        jobId: allocated.id,
+        active: [{ ...allocated, scheduledCollectionAt: null }],
+      });
+
+      expect(
+        await screen.findByText("On Tue 10 Mar (the job's day)"),
+      ).toBeVisible();
+    });
   });
 });

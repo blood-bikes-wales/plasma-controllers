@@ -1,4 +1,4 @@
-import { Clock, Plus, Search } from "lucide-react";
+import { CalendarClock, Clock, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router";
 import { AssignRiderDrawer } from "~/components/assign-rider-drawer";
@@ -20,7 +20,10 @@ import {
   displayJobReference,
   fetchJobs,
   formatJobCreatedAt,
+  formatScheduledCollection,
+  isMilkJob,
   jobErrorMessage,
+  upcomingCollectionAt,
 } from "~/lib/jobs";
 import { addressWithPostcode } from "~/lib/postcode";
 import { cn } from "~/lib/utils";
@@ -190,6 +193,21 @@ function CreatedAt({ createdAt }: { createdAt: string | null }) {
   );
 }
 
+/** "Collection Sat 29 Aug, 14:30" once a New or Allocated job has an arranged time. */
+function ScheduledCollection({ job }: { job: DeliveryJob }) {
+  const label = formatScheduledCollection(upcomingCollectionAt(job));
+  if (!label) {
+    return null;
+  }
+
+  return (
+    <p className="flex items-center gap-1.5 text-sm font-semibold text-bb-gray-900 dark:text-bb-gray-100">
+      <CalendarClock className="size-4 shrink-0" aria-hidden="true" />
+      <span>Collection {label}</span>
+    </p>
+  );
+}
+
 function JobCard({
   job,
   actionLabel,
@@ -223,6 +241,7 @@ function JobCard({
 
             <JobTypeLabel job={job} />
             <BereavementBadge job={job} />
+            <ScheduledCollection job={job} />
 
             <JobRouteIndicator
               pickup={addressWithPostcode(
@@ -428,7 +447,15 @@ export default function JobsPage() {
     }
   }
 
-  function handleCreated() {
+  function handleCreated(job: DeliveryJob) {
+    if (isMilkJob(job)) {
+      // The controller still has to phone the mother, so land on the job where
+      // the reminder is. Replace the New Job entry so Back returns to the list.
+      // The board reloads itself when the controller comes back to it.
+      navigate(`/jobs/${job.id}`, { replace: true });
+      return;
+    }
+
     navigate("/jobs");
     void load();
   }

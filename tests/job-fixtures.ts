@@ -297,6 +297,61 @@ export function stubJobsFetch(
       });
     }
 
+    const scheduleMatch = url.match(/\/jobs\/([^/]+)\/schedule$/);
+    if (method === "POST" && scheduleMatch) {
+      const jobId = decodeURIComponent(scheduleMatch[1]);
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const current = findJob(jobId);
+      if (!current) {
+        return jsonResponse({ message: "Not found" }, 404);
+      }
+
+      // The API's rules: only a New or Allocated job, and a milk job needs a future time.
+      if (current.status !== "New" && current.status !== "Allocated") {
+        return jsonResponse(
+          {
+            message: "Only a New or Allocated job can be scheduled.",
+            errors: { job: ["Only a New or Allocated job can be scheduled."] },
+          },
+          422,
+        );
+      }
+
+      const at = new Date(String(body.scheduledCollectionAt ?? ""));
+      if (
+        Number.isNaN(at.getTime()) ||
+        (current.jobType === "milk" && at.getTime() <= Date.now())
+      ) {
+        return jsonResponse(
+          {
+            message: "Choose a collection time in the future.",
+            errors: {
+              scheduledCollectionAt: [
+                "Choose a collection time in the future.",
+              ],
+            },
+          },
+          422,
+        );
+      }
+
+      const updated: DeliveryJob = {
+        ...current,
+        scheduledCollectionAt: at.toISOString(),
+        ...("needsMotherContact" in current
+          ? { needsMotherContact: false }
+          : {}),
+      };
+      const activeIndex = activeState.findIndex(
+        (candidate) => candidate.id === jobId,
+      );
+      if (activeIndex >= 0) {
+        activeState[activeIndex] = updated;
+      }
+
+      return jsonResponse(updated);
+    }
+
     if (method === "POST" && url.includes("/jobs/") && url.includes("/relay")) {
       const jobId = url.split("/jobs/")[1]?.split("/")[0] ?? "";
       const body = init?.body ? JSON.parse(String(init.body)) : {};

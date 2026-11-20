@@ -161,6 +161,74 @@ describe("JobsPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  describe("arranged collection time", () => {
+    // Local time (no "Z") so the label is the same in any timezone.
+    const scheduledCollectionAt = "2026-08-29T14:30:00";
+
+    it("shows the arranged time on a scheduled New or Allocated job only", async () => {
+      const [first, second] = mockActiveJobs;
+      renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [Role.Controller] },
+          {
+            active: [
+              { ...first, scheduledCollectionAt },
+              { ...second, scheduledCollectionAt },
+              {
+                ...first,
+                id: "99999999-9999-9999-9999-999999999991",
+                reference: "JB-2001",
+                scheduledCollectionAt: null,
+              },
+              {
+                ...first,
+                id: "99999999-9999-9999-9999-999999999992",
+                reference: "JB-2002",
+                status: "Collected",
+                scheduledCollectionAt,
+              },
+            ],
+          },
+        ),
+      });
+      await waitForJobsLoaded();
+
+      for (const reference of [/JB-1042/, /JB-1038/]) {
+        expect(
+          within(screen.getByRole("link", { name: reference })).getByText(
+            "Collection Sat 29 Aug, 14:30",
+          ),
+        ).toBeInTheDocument();
+      }
+      for (const reference of [/JB-2001/, /JB-2002/]) {
+        expect(
+          within(screen.getByRole("link", { name: reference })).queryByText(
+            /^Collection /,
+          ),
+        ).not.toBeInTheDocument();
+      }
+    });
+
+    it("shows no arranged time on a delivered job", async () => {
+      const user = userEvent.setup();
+      const [delivered] = mockCompletedJobs;
+      renderJobsPage("/jobs", {
+        fetchImpl: stubJobsFetch(
+          { ...mockAuthUser, roles: [Role.Controller] },
+          { completed: [{ ...delivered, scheduledCollectionAt }] },
+        ),
+      });
+      await waitForJobsLoaded();
+
+      await user.click(screen.getByRole("tab", { name: "Completed" }));
+
+      const card = await screen.findByRole("link", {
+        name: new RegExp(delivered.reference),
+      });
+      expect(within(card).queryByText(/^Collection /)).not.toBeInTheDocument();
+    });
+  });
+
   it("shows the Bereavement badge only on jobs flagged as a bereavement", async () => {
     const [standard, other] = mockActiveJobs;
     renderJobsPage("/jobs", {

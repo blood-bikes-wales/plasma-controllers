@@ -163,6 +163,17 @@ export type DeliveryJob = {
    * rendezvous point, null on the last leg and on non-relay jobs.
    */
   plannedArrivalAt?: string | null;
+  /**
+   * When the collection is arranged for. Null or absent means "today" (the day
+   * the job was created). Every role that can view jobs gets it.
+   */
+  scheduledCollectionAt?: string | null;
+  /**
+   * A milk job that is New with no scheduled time yet: the controller still has
+   * to call the mother. Only sent to roles that can create jobs, so absent for
+   * everyone else and on an API that predates it, which means false.
+   */
+  needsMotherContact?: boolean;
   createdAt: string | null;
   allocatedRider?: JobAllocatedRider | null;
   collectionRecord?: JobCollectionRecord | null;
@@ -228,6 +239,20 @@ export async function cancelJob(
   return apiFetch<DeliveryJob>(`/jobs/${jobId}/cancel`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Sets or changes when a New or Allocated job is collected. A milk job must be
+ * scheduled for the future; the API is the judge of that.
+ */
+export async function scheduleJobCollection(
+  jobId: string,
+  scheduledCollectionAt: string,
+): Promise<DeliveryJob> {
+  return apiFetch<DeliveryJob>(`/jobs/${encodeURIComponent(jobId)}/schedule`, {
+    method: "POST",
+    body: JSON.stringify({ scheduledCollectionAt }),
   });
 }
 
@@ -403,11 +428,63 @@ export function isRelayJob(
 /**
  * The day a normal job is collected and delivered on, as an ISO timestamp
  * (only its local calendar day is used), or null when unknown. Single source
- * of truth for the day; change it here if the day ever comes from somewhere
- * other than the created date.
+ * of truth for the day: the day the collection was scheduled for, or the day
+ * the job was created when it has no scheduled time.
  */
-export function getJobDate(job: Pick<DeliveryJob, "createdAt">): string | null {
-  return job.createdAt;
+export function getJobDate(
+  job: Pick<DeliveryJob, "createdAt" | "scheduledCollectionAt">,
+): string | null {
+  return job.scheduledCollectionAt ?? job.createdAt;
+}
+
+/** "Sat 29 Aug, 14:30" for an arranged collection time, or "" when unusable. */
+export function formatScheduledCollection(
+  iso: string | null | undefined,
+): string {
+  const day = formatJobDay(iso);
+  if (!iso || !day) {
+    return "";
+  }
+
+  const time = new Date(iso).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${day}, ${time}`;
+}
+
+/**
+ * The arranged collection time to show as upcoming: set, and the job is still
+ * New or Allocated. Once collected, delivered or cancelled it is history.
+ */
+export function upcomingCollectionAt(
+  job: Pick<DeliveryJob, "status" | "scheduledCollectionAt">,
+): string | null {
+  if (!job.scheduledCollectionAt) {
+    return null;
+  }
+
+  return job.status === "New" || job.status === "Allocated"
+    ? job.scheduledCollectionAt
+    : null;
+}
+
+/**
+ * Whether the controller still has to phone the mother to arrange a collection:
+ * a milk job the API flags as needing it, and which has no time yet.
+ */
+export function needsMotherContact(
+  job: Pick<
+    DeliveryJob,
+    "jobType" | "status" | "needsMotherContact" | "scheduledCollectionAt"
+  >,
+): boolean {
+  return (
+    isMilkJob(job) &&
+    job.status === "New" &&
+    job.needsMotherContact === true &&
+    !job.scheduledCollectionAt
+  );
 }
 
 /** Current local time as an `<input type="time">` value (HH:mm). */
