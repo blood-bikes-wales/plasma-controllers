@@ -284,6 +284,55 @@ describe("routes", () => {
     });
   });
 
+  it("lists the job contents link in the Operations header for trustees", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubAuthenticatedFetch({ ...mockAuthUser, roles: [Role.Trustee] }),
+    );
+
+    renderWithRouter(appRoutes, "/operations/section-172", {
+      authenticated: true,
+      user: { ...mockAuthUser, roles: [Role.Trustee] },
+    });
+
+    expect(
+      await screen.findByRole("link", { name: "Job contents" }),
+    ).toHaveAttribute("href", "/operations/job-contents");
+  });
+
+  it("renders the job contents page for trustees", async () => {
+    vi.stubGlobal(
+      "fetch",
+      stubAuthenticatedFetch({ ...mockAuthUser, roles: [Role.Trustee] }),
+    );
+
+    renderWithRouter(appRoutes, "/operations/job-contents", {
+      authenticated: true,
+      user: { ...mockAuthUser, roles: [Role.Trustee] },
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Job contents" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("New contents")).toBeInTheDocument();
+  });
+
+  it("redirects controllers away from the job contents page", async () => {
+    vi.stubGlobal("fetch", stubAuthenticatedFetch(mockAuthUser));
+
+    const { router } = renderWithRouter(appRoutes, "/operations/job-contents", {
+      authenticated: true,
+      user: mockAuthUser,
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/jobs");
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Job contents" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows operations child nav in the header for trustees", async () => {
     vi.stubGlobal(
       "fetch",

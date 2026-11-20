@@ -4,6 +4,7 @@ import {
   canAccessPath,
   canCreateJobs,
   canManageBikes,
+  canManageJobContents,
   canManagePostcodeAreas,
   childNavForPath,
   hasPlasmaAccess,
@@ -51,6 +52,17 @@ describe("canManageBikes", () => {
     expect(canManageBikes(Role.Controller)).toBe(false);
     expect(canManageBikes(Role.Rider)).toBe(false);
     expect(canManageBikes(null)).toBe(false);
+  });
+});
+
+describe("canManageJobContents", () => {
+  it("allows admin and trustee only", () => {
+    expect(canManageJobContents(Role.Admin)).toBe(true);
+    expect(canManageJobContents(Role.Trustee)).toBe(true);
+    expect(canManageJobContents(Role.Controller)).toBe(false);
+    expect(canManageJobContents(Role.Rider)).toBe(false);
+    expect(canManageJobContents(Role.Driver)).toBe(false);
+    expect(canManageJobContents(null)).toBe(false);
   });
 });
 
@@ -110,6 +122,7 @@ describe("childNavForPath", () => {
     expect(childNavForPath("/operations").map((item) => item.to)).toEqual([
       "/operations/postcode-areas",
       "/operations/section-172",
+      "/operations/job-contents",
     ]);
     expect(childNavForPath("/operations/section-172")[0]?.label).toBe(
       "Postcode areas",
@@ -139,6 +152,11 @@ describe("canAccessPath", () => {
     );
     expect(canAccessPath(Role.Trustee, "/operations/section-172")).toBe(true);
     expect(canAccessPath(Role.Admin, "/operations/section-172")).toBe(true);
+    expect(canAccessPath(Role.Controller, "/operations/job-contents")).toBe(
+      false,
+    );
+    expect(canAccessPath(Role.Trustee, "/operations/job-contents")).toBe(true);
+    expect(canAccessPath(Role.Admin, "/operations/job-contents")).toBe(true);
     expect(canAccessPath(Role.Controller, "/dashboard")).toBe(true);
     expect(canAccessPath(Role.Controller, "/select-role")).toBe(true);
   });
