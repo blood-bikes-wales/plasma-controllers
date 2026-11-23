@@ -29,6 +29,8 @@ export default [
         route("new", "routes/jobs-new.tsx", [
           route("assign", "routes/jobs-new-assign.tsx"),
         ]),
+        route("recurring", "routes/jobs.recurring.tsx"),
+        route("calendar", "routes/jobs.calendar.tsx"),
         route(":jobId", "routes/jobs.$jobId.tsx"),
       ]),
     ]),

@@ -28,6 +28,8 @@ import {
   formatJobCreatedAt,
   formatScheduledCollection,
   isMilkJob,
+  isRecurringJob,
+  isUpcomingJob,
   jobAttentionLabel,
   jobErrorMessage,
   orderActiveJobsForBoard,
@@ -38,10 +40,17 @@ import { cn } from "~/lib/utils";
 
 import type { Route } from "./+types/jobs";
 
-type FilterTab = "All" | "New" | "Allocated" | "Collected" | "Completed";
+type FilterTab =
+  | "All"
+  | "Upcoming"
+  | "New"
+  | "Allocated"
+  | "Collected"
+  | "Completed";
 
 const FILTER_TABS: FilterTab[] = [
   "All",
+  "Upcoming",
   "New",
   "Allocated",
   "Collected",
@@ -76,6 +85,7 @@ function matchesStatusTab(job: DeliveryJob, tab: FilterTab) {
   switch (tab) {
     case "All":
     case "Completed":
+    case "Upcoming":
       return true;
     default:
       return job.status === tab;
@@ -89,6 +99,10 @@ function jobsForTab(
 ) {
   if (tab === "Completed") {
     return completed;
+  }
+
+  if (tab === "Upcoming") {
+    return orderActiveJobsForBoard(active).filter((job) => isUpcomingJob(job));
   }
 
   return active;
@@ -109,6 +123,10 @@ function emptyMessage(
     return "No completed jobs match your search.";
   }
 
+  if (tab === "Upcoming" && !hasSourceJobs) {
+    return "No upcoming jobs.";
+  }
+
   if (!hasSourceJobs) {
     return "No active jobs.";
   }
@@ -119,6 +137,10 @@ function emptyMessage(
 function sectionLabel(tab: FilterTab) {
   if (tab === "Completed") {
     return "Completed jobs";
+  }
+
+  if (tab === "Upcoming") {
+    return "Upcoming jobs";
   }
 
   return "Active jobs";
@@ -263,6 +285,11 @@ function JobCard({
                     Relay
                   </span>
                 ) : null}
+                {isRecurringJob(job) ? (
+                  <span className="ml-2 text-xs font-sans font-semibold uppercase tracking-wide text-bb-navy dark:text-bb-navy-light">
+                    Recurring
+                  </span>
+                ) : null}
               </span>
               <Badge className={cn("shrink-0", statusBadgeClass(job.status))}>
                 {job.status}
@@ -378,7 +405,9 @@ export default function JobsPage() {
   const isAssignOpen = location.pathname === "/jobs/new/assign";
   const isDetailRoute =
     /^\/jobs\/[^/]+$/.test(location.pathname) &&
-    location.pathname !== "/jobs/new";
+    location.pathname !== "/jobs/new" &&
+    location.pathname !== "/jobs/recurring" &&
+    location.pathname !== "/jobs/calendar";
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<FilterTab>("All");
@@ -416,14 +445,16 @@ export default function JobsPage() {
     setError(null);
     void load()
       .catch((caught: unknown) => {
-        if (!cancelled) {
-          setError(jobErrorMessage(caught, "Unable to load jobs."));
+        if (cancelled) {
+          return;
         }
+        setError(jobErrorMessage(caught, "Unable to load jobs."));
       })
       .finally(() => {
-        if (!cancelled) {
-          setIsLoading(false);
+        if (cancelled) {
+          return;
         }
+        setIsLoading(false);
       });
 
     return () => {
@@ -483,10 +514,9 @@ export default function JobsPage() {
   }
 
   function handleCreated(job: DeliveryJob) {
-    if (isMilkJob(job)) {
+    if (isMilkJob(job) && !job.scheduledCollectionAt) {
       // The controller still has to phone the mother, so land on the job where
       // the reminder is. Replace the New Job entry so Back returns to the list.
-      // The board reloads itself when the controller comes back to it.
       navigate(`/jobs/${job.id}`, { replace: true });
       return;
     }
@@ -496,11 +526,10 @@ export default function JobsPage() {
   }
 
   // Jobs for a later day come after today's, soonest first (not on Completed).
-  const sourceJobs = jobsForTab(
-    activeTab,
-    orderActiveJobsForBoard(activeJobs),
-    completedJobs,
-  );
+  // Upcoming already filters and sorts inside jobsForTab.
+  const orderedActive =
+    activeTab === "Upcoming" ? activeJobs : orderActiveJobsForBoard(activeJobs);
+  const sourceJobs = jobsForTab(activeTab, orderedActive, completedJobs);
   const visibleJobs = sourceJobs.filter(
     (job) =>
       matchesStatusTab(job, activeTab) && matchesSearch(searchQuery, job),
@@ -518,14 +547,32 @@ export default function JobsPage() {
             Jobs
           </h1>
           {canCreate && (
-            <Button
-              render={<Link to="/jobs/new" />}
-              nativeButton={false}
-              className="h-11 gap-2 rounded-bb-button px-5 text-base font-bold sm:h-12"
-            >
-              <Plus aria-hidden="true" />
-              New Job
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 gap-2 rounded-bb-button px-4 text-base font-semibold sm:h-12"
+                onClick={() => navigate("/jobs/calendar")}
+              >
+                Calendar
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 gap-2 rounded-bb-button px-4 text-base font-semibold sm:h-12"
+                onClick={() => navigate("/jobs/recurring")}
+              >
+                Recurring
+              </Button>
+              <Button
+                render={<Link to="/jobs/new" />}
+                nativeButton={false}
+                className="h-11 gap-2 rounded-bb-button px-5 text-base font-bold sm:h-12"
+              >
+                <Plus aria-hidden="true" />
+                New Job
+              </Button>
+            </div>
           )}
         </header>
 

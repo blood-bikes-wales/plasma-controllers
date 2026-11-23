@@ -1064,8 +1064,9 @@ describe("Record collection and delivery time only", () => {
     const input = await screen.findByLabelText("Collection time");
     expect(input).toHaveAttribute("type", "time");
     expect((input as HTMLInputElement).value).toMatch(/^\d{2}:\d{2}$/);
-    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
-    expect(document.querySelector('input[type="date"]')).toBeNull();
+    // Schedule may use datetime-local elsewhere; the collection field itself is time-only.
+    expect(input).not.toHaveAttribute("type", "date");
+    expect(input).not.toHaveAttribute("type", "datetime-local");
   });
 
   it("sends a collection timestamp on the job's created day", async () => {

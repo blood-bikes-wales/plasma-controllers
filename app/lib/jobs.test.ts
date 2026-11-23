@@ -18,8 +18,10 @@ import {
   formatScheduledCollection,
   getJobDate,
   isMilkJob,
+  isRecurringJob,
   isRelayJob,
   isStaleJobError,
+  isUpcomingJob,
   jobAttentionLabel,
   jobErrorMessage,
   needsMotherContact,
@@ -404,6 +406,41 @@ describe("upcomingCollectionAt", () => {
         upcomingCollectionAt({ status, scheduledCollectionAt: at }),
       ).toBeNull();
     }
+  });
+});
+
+describe("isUpcomingJob", () => {
+  const now = new Date(2026, 7, 29, 12, 0);
+  const local = (day: number, hours: number) =>
+    new Date(2026, 7, day, hours).toISOString();
+
+  it("is true only for New/Allocated jobs scheduled from tomorrow", () => {
+    expect(
+      isUpcomingJob(
+        { status: "New", scheduledCollectionAt: local(30, 9) },
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      isUpcomingJob(
+        { status: "New", scheduledCollectionAt: local(29, 18) },
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      isUpcomingJob(
+        { status: "Collected", scheduledCollectionAt: local(30, 9) },
+        now,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("isRecurringJob", () => {
+  it("is true when recurrenceId is set", () => {
+    expect(isRecurringJob({ recurrenceId: "series-1" })).toBe(true);
+    expect(isRecurringJob({ recurrenceId: null })).toBe(false);
+    expect(isRecurringJob({})).toBe(false);
   });
 });
 
