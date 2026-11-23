@@ -97,6 +97,8 @@ export type CreateJobPayload = {
   serviceAreas: string[];
   estimatedCollectionAt?: string;
   estimatedDeliveryAt?: string;
+  /** Arranged collection time; optional on create for any job type. */
+  scheduledCollectionAt?: string;
 };
 
 export type AllocateJobPayload = {
@@ -168,6 +170,13 @@ export type DeliveryJob = {
    * the job was created). Every role that can view jobs gets it.
    */
   scheduledCollectionAt?: string | null;
+  /**
+   * Series id when this job was materialized from a recurrence template.
+   * Null/absent for one-off jobs.
+   */
+  recurrenceId?: string | null;
+  /** Local calendar day of a recurrence occurrence (YYYY-MM-DD), when set. */
+  occurrenceDate?: string | null;
   /**
    * A milk job that is New with no scheduled time yet: the controller still has
    * to call the mother. Only sent to roles that can create jobs, so absent for
@@ -566,26 +575,47 @@ export function upcomingCollectionAt(
  * lists the current jobs first, then the future ones soonest first (equal
  * times keep the API order).
  */
-export function orderActiveJobsForBoard<
-  T extends Pick<DeliveryJob, "status" | "scheduledCollectionAt">,
->(jobs: T[], now: Date = new Date()): T[] {
+/**
+ * New/Allocated with an arranged collection on a later local calendar day than
+ * `now`. Matches the FUTURE bucket in {@link orderActiveJobsForBoard}.
+ */
+export function isUpcomingJob(
+  job: Pick<DeliveryJob, "status" | "scheduledCollectionAt">,
+  now: Date = new Date(),
+): boolean {
+  const scheduledAt = upcomingCollectionAt(job);
+  if (!scheduledAt) {
+    return false;
+  }
+
   const startOfTomorrow = new Date(
     now.getFullYear(),
     now.getMonth(),
     now.getDate() + 1,
   ).getTime();
+  return new Date(scheduledAt).getTime() >= startOfTomorrow;
+}
 
+export function orderActiveJobsForBoard<
+  T extends Pick<DeliveryJob, "status" | "scheduledCollectionAt">,
+>(jobs: T[], now: Date = new Date()): T[] {
   const scheduledTime = (job: T): number => {
     const scheduledAt = upcomingCollectionAt(job);
     return scheduledAt ? new Date(scheduledAt).getTime() : Number.NaN;
   };
-  const isFuture = (job: T): boolean => scheduledTime(job) >= startOfTomorrow;
 
-  const current = jobs.filter((job) => !isFuture(job));
+  const current = jobs.filter((job) => !isUpcomingJob(job, now));
   const future = jobs
-    .filter(isFuture)
+    .filter((job) => isUpcomingJob(job, now))
     .sort((a, b) => scheduledTime(a) - scheduledTime(b));
   return [...current, ...future];
+}
+
+/** True when the job belongs to a recurring series. */
+export function isRecurringJob(
+  job: Pick<DeliveryJob, "recurrenceId">,
+): boolean {
+  return Boolean(job.recurrenceId);
 }
 
 /**

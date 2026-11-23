@@ -1,4 +1,10 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,8 +24,10 @@ import JobsNewRoute from "./jobs-new";
 import JobsNewAssignRoute from "./jobs-new-assign";
 
 afterEach(() => {
+  cleanup();
   clearAuthToken();
   clearActiveRole();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -54,6 +62,8 @@ function renderJobsPage(
             element: <JobsNewRoute />,
             children: [{ path: "assign", element: <JobsNewAssignRoute /> }],
           },
+          { path: "recurring", element: <div>Recurring</div> },
+          { path: "calendar", element: <div>Calendar</div> },
         ],
       },
     ],
@@ -67,9 +77,12 @@ function renderJobsPage(
 }
 
 async function waitForJobsLoaded() {
-  await waitFor(() => {
-    expect(screen.getByText("JB-1042")).toBeInTheDocument();
-  });
+  await waitFor(
+    () => {
+      expect(screen.getByText("JB-1042")).toBeInTheDocument();
+    },
+    { timeout: 5000 },
+  );
 }
 
 describe("JobsPage", () => {

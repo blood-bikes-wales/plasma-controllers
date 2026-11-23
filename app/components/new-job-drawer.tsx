@@ -150,6 +150,8 @@ const newJobBaseSchema = z.object({
   deliveryNotes: z.string().trim().max(NOTES_MAX, NOTES_TOO_LONG),
   estimatedCollection: estimatedTimeSchema,
   estimatedDelivery: estimatedTimeSchema,
+  scheduledCollectionDate: z.string().trim(),
+  scheduledCollectionTime: estimatedTimeSchema,
   contents: z.string().trim().min(1, "Choose the contents"),
   serviceAreas: z.array(z.string()).min(1, "Choose at least one service area"),
   ...milkFieldsSchema.shape,
@@ -159,8 +161,34 @@ function validateTypeFields(
   form: z.infer<typeof newJobBaseSchema>,
   ctx: z.RefinementCtx,
 ) {
+  const hasScheduleDate = form.scheduledCollectionDate.trim() !== "";
+  const hasScheduleTime = form.scheduledCollectionTime.trim() !== "";
+  if (hasScheduleDate !== hasScheduleTime) {
+    ctx.addIssue({
+      code: "custom",
+      path: hasScheduleDate
+        ? ["scheduledCollectionTime"]
+        : ["scheduledCollectionDate"],
+      message: "Enter both a collection date and time, or leave both blank",
+    });
+  }
+
   if (form.jobType !== "milk") {
     return;
+  }
+
+  if (hasScheduleDate && hasScheduleTime) {
+    const iso = combineDayAndTime(
+      `${form.scheduledCollectionDate}T00:00:00`,
+      form.scheduledCollectionTime,
+    );
+    if (iso && new Date(iso).getTime() <= Date.now()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["scheduledCollectionTime"],
+        message: "Choose a collection time in the future",
+      });
+    }
   }
 
   const parsed = parseMilkLitres(form.milkLitres);
@@ -226,6 +254,8 @@ const EMPTY_FORM: NewJobFormState = {
   deliveryNotes: "",
   estimatedCollection: "",
   estimatedDelivery: "",
+  scheduledCollectionDate: "",
+  scheduledCollectionTime: "",
   contents: "",
   serviceAreas: [],
 };
@@ -541,14 +571,20 @@ function payloadFromForm(
     organisation: organisation || undefined,
   };
 
-  // A job being created is for today, so a filled time is combined with the
-  // current calendar day.
+  // Estimates are still for today; arranged collection may be any day.
   const today = new Date().toISOString();
   const estimatedCollectionAt = combineDayAndTime(
     today,
     form.estimatedCollection,
   );
   const estimatedDeliveryAt = combineDayAndTime(today, form.estimatedDelivery);
+  const scheduledCollectionAt =
+    form.scheduledCollectionDate.trim() === ""
+      ? undefined
+      : combineDayAndTime(
+          `${form.scheduledCollectionDate}T00:00:00`,
+          form.scheduledCollectionTime,
+        );
 
   const milk =
     form.jobType === "milk" ? parseMilkLitres(form.milkLitres) : null;
@@ -575,6 +611,7 @@ function payloadFromForm(
     serviceAreas: form.serviceAreas,
     ...(estimatedCollectionAt ? { estimatedCollectionAt } : {}),
     ...(estimatedDeliveryAt ? { estimatedDeliveryAt } : {}),
+    ...(scheduledCollectionAt ? { scheduledCollectionAt } : {}),
   };
 }
 
@@ -1100,6 +1137,52 @@ export function NewJobDrawer({
                 onChange={(value) => updateField("estimatedCollection", value)}
                 error={errors.estimatedCollection}
               />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-1">
+                    <Label
+                      htmlFor="scheduled-collection-date"
+                      className="text-bb-gray-700 dark:text-bb-gray-300"
+                    >
+                      Arranged collection date
+                    </Label>
+                    <span className="text-sm text-bb-gray-500">(optional)</span>
+                  </div>
+                  <Input
+                    id="scheduled-collection-date"
+                    type="date"
+                    value={form.scheduledCollectionDate}
+                    onChange={(event) =>
+                      updateField("scheduledCollectionDate", event.target.value)
+                    }
+                    aria-invalid={!!errors.scheduledCollectionDate}
+                    className="h-11 text-base dark:bg-input/30"
+                  />
+                  <FieldError message={errors.scheduledCollectionDate} />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-baseline gap-1">
+                    <Label
+                      htmlFor="scheduled-collection-time"
+                      className="text-bb-gray-700 dark:text-bb-gray-300"
+                    >
+                      Arranged collection time
+                    </Label>
+                    <span className="text-sm text-bb-gray-500">(optional)</span>
+                  </div>
+                  <Input
+                    id="scheduled-collection-time"
+                    type="time"
+                    value={form.scheduledCollectionTime}
+                    onChange={(event) =>
+                      updateField("scheduledCollectionTime", event.target.value)
+                    }
+                    aria-invalid={!!errors.scheduledCollectionTime}
+                    className="h-11 text-base dark:bg-input/30"
+                  />
+                  <FieldError message={errors.scheduledCollectionTime} />
+                </div>
+              </div>
             </FormSection>
 
             <FormSection title="Delivery">

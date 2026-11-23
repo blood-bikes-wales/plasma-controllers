@@ -9,6 +9,8 @@ import DashboardLayout from "~/routes/dashboard-layout";
 import DirectoryPage from "~/routes/directory";
 import JobsPage from "~/routes/jobs";
 import JobsDetailPage from "~/routes/jobs.$jobId";
+import JobsCalendarPage from "~/routes/jobs.calendar";
+import JobsRecurringPage from "~/routes/jobs.recurring";
 import JobsNewRoute from "~/routes/jobs-new";
 import JobsNewAssignRoute from "~/routes/jobs-new-assign";
 import LoginPage from "~/routes/login";
@@ -66,6 +68,8 @@ export const appRoutes: RouteObject[] = [
                 Component: JobsNewRoute,
                 children: [{ path: "assign", Component: JobsNewAssignRoute }],
               },
+              { path: "recurring", Component: JobsRecurringPage },
+              { path: "calendar", Component: JobsCalendarPage },
               { path: ":jobId", Component: JobsDetailPage },
             ],
           },

@@ -37,6 +37,7 @@ import {
   formatScheduledCollection,
   fromDateTimeLocalValue,
   getJobDate,
+  isRecurringJob,
   isRelayJob,
   isStaleJobError,
   type JobMother,
@@ -45,6 +46,7 @@ import {
   performJobAction,
   relayJob,
   scheduleJobCollection,
+  toDateTimeLocalValue,
   upcomingCollectionAt,
   waitingForLegMessage,
 } from "~/lib/jobs";
@@ -143,21 +145,180 @@ function MotherContact({ mother }: { mother: JobMother }) {
   );
 }
 
-/** "Collection arranged for Sat 29 Aug, 14:30", with an icon, once a time is set. */
-function ArrangedCollection({ scheduledAt }: { scheduledAt: string }) {
+/** Arrange a collection time on a New/Allocated job that has none yet. */
+function ScheduleCollectionForm({
+  onSave,
+}: {
+  onSave: (scheduledCollectionAt: string) => Promise<void>;
+}) {
+  const id = useId();
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | undefined>();
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(undefined);
+    if (value.trim() === "") {
+      setError("Enter the collection date and time");
+      return;
+    }
+
+    const iso = fromDateTimeLocalValue(value);
+    if (!iso) {
+      setError("Enter a valid collection date and time");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave(iso);
+    } catch (caught: unknown) {
+      setError(jobErrorMessage(caught, "Could not save the collection time."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form
+      className="space-y-3 rounded-bb-card bg-bb-white px-4 py-3 ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700"
+      onSubmit={handleSubmit}
+      noValidate
+      aria-label="Arrange collection"
+    >
+      <h2 className="text-base font-bold text-bb-gray-900 dark:text-bb-gray-100">
+        Arrange collection
+      </h2>
+      <div className="space-y-2">
+        <Label htmlFor={id} className="text-bb-gray-700 dark:text-bb-gray-300">
+          Collection date and time
+        </Label>
+        <Input
+          id={id}
+          type="datetime-local"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          className="h-11 text-base dark:bg-input/30"
+        />
+        <FieldError message={error} />
+      </div>
+      <Button
+        type="submit"
+        disabled={saving}
+        className="h-10 rounded-bb-button px-4 font-bold"
+      >
+        {saving ? "Saving…" : "Save collection time"}
+      </Button>
+    </form>
+  );
+}
+
+/** "Collection arranged for Sat 29 Aug, 14:30", with optional reschedule. */
+function ArrangedCollection({
+  scheduledAt,
+  canReschedule,
+  onReschedule,
+}: {
+  scheduledAt: string;
+  canReschedule: boolean;
+  onReschedule?: (scheduledCollectionAt: string) => Promise<void>;
+}) {
+  const id = useId();
   const label = formatScheduledCollection(scheduledAt);
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(toDateTimeLocalValue(scheduledAt));
+  const [error, setError] = useState<string | undefined>();
+  const [saving, setSaving] = useState(false);
+
   if (!label) {
     return null;
   }
 
+  if (!canReschedule || !onReschedule || !editing) {
+    return (
+      <div className="flex flex-wrap items-center gap-3 rounded-bb-card bg-bb-white px-4 py-3 ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700">
+        <p
+          role="status"
+          className="flex items-center gap-2 text-base font-semibold text-bb-gray-900 dark:text-bb-gray-100"
+        >
+          <CalendarCheck className="size-5 shrink-0" aria-hidden="true" />
+          Collection arranged for {label}
+        </p>
+        {canReschedule && onReschedule ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 rounded-bb-button px-3 text-sm font-semibold"
+            onClick={() => {
+              setValue(toDateTimeLocalValue(scheduledAt));
+              setError(undefined);
+              setEditing(true);
+            }}
+          >
+            Change
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(undefined);
+    const iso = fromDateTimeLocalValue(value);
+    if (!iso) {
+      setError("Enter a valid collection date and time");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onReschedule?.(iso);
+      setEditing(false);
+    } catch (caught: unknown) {
+      setError(jobErrorMessage(caught, "Could not save the collection time."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <p
-      role="status"
-      className="flex items-center gap-2 rounded-bb-card bg-bb-white px-4 py-3 text-base font-semibold text-bb-gray-900 ring-1 ring-bb-gray-200 dark:bg-card dark:text-bb-gray-100 dark:ring-bb-gray-700"
+    <form
+      className="space-y-3 rounded-bb-card bg-bb-white px-4 py-3 ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700"
+      onSubmit={handleSubmit}
+      noValidate
     >
-      <CalendarCheck className="size-5 shrink-0" aria-hidden="true" />
-      Collection arranged for {label}
-    </p>
+      <Label htmlFor={id} className="text-bb-gray-700 dark:text-bb-gray-300">
+        Collection date and time
+      </Label>
+      <Input
+        id={id}
+        type="datetime-local"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        className="h-11 text-base dark:bg-input/30"
+      />
+      <FieldError message={error} />
+      <div className="flex gap-2">
+        <Button
+          type="submit"
+          disabled={saving}
+          className="h-10 rounded-bb-button px-4 font-bold"
+        >
+          {saving ? "Saving…" : "Save"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 rounded-bb-button px-4 font-semibold"
+          onClick={() => setEditing(false)}
+          disabled={saving}
+        >
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -857,9 +1018,16 @@ export default function JobDetailPage() {
             </p>
           ) : null}
         </div>
-        <Badge className={cn("shrink-0", statusBadgeClass(job.status))}>
-          {job.status}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {isRecurringJob(job) ? (
+            <Badge className="shrink-0 border border-bb-navy bg-bb-white text-bb-navy dark:bg-bb-navy/20 dark:text-bb-navy-light">
+              Recurring
+            </Badge>
+          ) : null}
+          <Badge className={cn("shrink-0", statusBadgeClass(job.status))}>
+            {job.status}
+          </Badge>
+        </div>
       </header>
 
       {showMotherReminder ? (
@@ -871,7 +1039,19 @@ export default function JobDetailPage() {
           {job.mother ? <MotherContact mother={job.mother} /> : null}
         </MotherContactReminder>
       ) : arrangedAt ? (
-        <ArrangedCollection scheduledAt={arrangedAt} />
+        <ArrangedCollection
+          scheduledAt={arrangedAt}
+          canReschedule={canManage}
+          onReschedule={async (scheduledCollectionAt) => {
+            setJob(await scheduleJobCollection(job.id, scheduledCollectionAt));
+          }}
+        />
+      ) : canManage && (job.status === "New" || job.status === "Allocated") ? (
+        <ScheduleCollectionForm
+          onSave={async (scheduledCollectionAt) => {
+            setJob(await scheduleJobCollection(job.id, scheduledCollectionAt));
+          }}
+        />
       ) : null}
 
       <Card className="rounded-bb-card border-0 bg-bb-white py-5 shadow-none ring-1 ring-bb-gray-200 dark:bg-card dark:ring-bb-gray-700">

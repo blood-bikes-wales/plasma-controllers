@@ -192,7 +192,7 @@ describe("Creating a job scheduled for the future, with nobody on shift", () => 
     expect(allocateCalls(fetchMock)).toHaveLength(0);
   });
 
-  it("never opens the assign rider step and lands on the detail for a milk job", async () => {
+  it("never opens the assign rider step and lists the New job for a milk job", async () => {
     created.job = {
       ...futureJob,
       jobType: "milk",
@@ -203,12 +203,11 @@ describe("Creating a job scheduled for the future, with nobody on shift", () => 
 
     await openNewJobAndCreate(router);
 
-    await waitFor(() => {
-      expect(router.state.location.pathname).toBe(
-        "/jobs/88888888-8888-8888-8888-888888888888",
-      );
-    });
-    expect(await screen.findByText("Job detail page")).toBeInTheDocument();
+    const card = await screen.findByRole("link", { name: /JB-2001/ });
+    expect(within(card).getByText("New")).toBeInTheDocument();
+    expect(within(card).getByText(/^Collection /)).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/jobs");
+    expect(screen.queryByText("Job detail page")).not.toBeInTheDocument();
     expect(visited.some((path) => path.includes("assign"))).toBe(false);
     expect(
       screen.queryByRole("heading", { name: "Assign rider" }),
